@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Energy Bodies Control</title>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: black;
+      color: white;
+      font-family: sans-serif;
+    }
+  </style>
+</head>
+<body>
+<script>
+let socket;
+let emotionNames = ["anxiety", "sadness", "joy", "anger", "fear", "calm"];
+let regionNames = ["head", "neck", "armsHands", "chest", "abdomen", "legsFeet", "spine"];
+let sliders = {};
+
+function setup() {
+  createCanvas(400, windowHeight);
+  background(0);
+
+  // --- Auto-detect WebSocket host ---
+  const host = window.location.hostname;
+  socket = new WebSocket(`ws://${host}:8080`);
+
+  socket.onopen = () => {
+    console.log(`✅ CONNECTED to WebSocket server at ws://${host}:8080`);
+  };
+  socket.onerror = (err) => {
+    console.error("❌ WebSocket error:", err);
+  };
+
+  let y = 50;
+
+  // Emotion sliders
+  createLabel("Emotion Sliders", y);
+  y += 40;
+  emotionNames.forEach(name => {
+    createLabel(name, y);
+    sliders[name] = createSlider(0, 5, 0, 0.1);
+    sliders[name].position(120, y);
+    sliders[name].input(sendValues);
+    y += 30;
+  });
+
+  y += 20;
+
+  // Region sliders
+  createLabel("Region Sliders", y);
+  y += 40;
+  regionNames.forEach(name => {
+    createLabel(name, y);
+    if (name === "spine") {
+      sliders[name] = createSlider(0, 100, 0, 1);
+    } else {
+      sliders[name] = createSlider(0, 5, 0, 0.1);
+    }
+    sliders[name].position(120, y);
+    sliders[name].input(sendValues);
+    y += 30;
+  });
+
+  y += 30;
+
+  // Start/Stop buttons
+  let startBtn = createButton("Start Tracking");
+  startBtn.position(20, y);
+  startBtn.mousePressed(() => sendAction("start"));
+
+  let stopBtn = createButton("Stop Tracking");
+  stopBtn.position(150, y);
+  stopBtn.mousePressed(() => sendAction("stop"));
+}
+
+function draw() {
+  background(0); // keep background black
+}
+
+function createLabel(txt, y) {
+  let lbl = createDiv(txt);
+  lbl.position(20, y);
+  lbl.style("color", "#ffffff");
+}
+
+function sendValues() {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  let values = { emotion: {}, region: {} };
+  emotionNames.forEach(name => values.emotion[name] = sliders[name].value());
+  regionNames.forEach(name => values.region[name] = sliders[name].value());
+  socket.send(JSON.stringify(values));
+}
+
+function sendAction(action) {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ action }));
+}
+
+function sendOrientation(value) {
+// 1) BroadcastChannel (works if display + control run on same origin)
+if (value === 'toggle') ch.postMessage({ type: 'toggle' });
+else ch.postMessage({ type: 'orientation', value });
+
+
+// 2) WebSocket fallback (works across devices)
+if (socket && socket.readyState === WebSocket.OPEN) {
+socket.send(JSON.stringify({ type: 'orientation', value }));
+}
+}
+
+</script>
+
+<button onclick="sendOrientation('portrait')">Portrait</button>
+<button onclick="sendOrientation('landscape')">Landscape</button>
+<button onclick="sendOrientation('toggle')">Toggle</button>
+
+<script>
+  const ch = new BroadcastChannel('energy-bodies-orientation');
+  function sendOrientation(value) {
+    if (value === 'toggle') ch.postMessage({ type: 'toggle' });
+    else ch.postMessage({ type: 'orientation', value });
+  }
+</script>
+</body>
+</html>
+
