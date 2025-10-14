@@ -7,9 +7,16 @@
   <link rel="icon" href="data:,">
 
   <!-- Order: p5 → ml5 → sketch -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ml5/0.12.2/ml5.min.js"></script>
-  <script defer src="./sketch.js"></script>
+<!-- 1) p5 FIRST (local) -->
+<script src="/libs/p5.min.js"></script>
+
+
+<!-- 2) ml5 AFTER p5 (local) -->
+<script src="/libs/ml5.min.js"></script>
+
+
+<!-- 3) YOUR SKETCH LAST -->
+<script defer src="./sketch.js"></script>
 
 
   <style>
