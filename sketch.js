@@ -1,9 +1,3 @@
-// Minimal patch: keep your structure, add 3 tiny tweaks
-// 1) Consistent sizing across screens: pixelDensity(1)
-// 2) Small responsive factor K used ONLY where it matters (region widths + two magic offsets)
-// 3) Optional: lighter density in background layers for faster first paint (guardrails)
-
-
 
 console.log("✅ sketch.js is starting to load...");
 
