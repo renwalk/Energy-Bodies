@@ -6,12 +6,12 @@
   <title>Energy Bodies — Display</title>
   <link rel="icon" href="data:,">
 
+  <!-- Load p5 and ml5 locally (blocking) -->
+  <script src="./p5.min.js"></script>
+  <script src="./ml5.min.js"></script>
 
-  <script src="/libs/p5.min.js"></script>
-  <script src="/libs/ml5.min.js"></script>
+  <!-- Single sketch include (deferred). Make sure there is ONLY ONE of these. -->
   <script defer src="./sketch.js"></script>
-
-
 
   <style>
     html, body { margin:0; padding:0; background:#000; overflow:hidden; }
@@ -22,6 +22,7 @@
 </head>
 <body>
 <div id="hud">WS:<span id="ws" class="pill">-</span> ML5:<span id="ml5s" class="pill">-</span> Track:<span id="trk" class="pill">OFF</span></div>
+
 <script>
 let socket;
 const HUD = { ws:document.getElementById('ws'), ml5s:document.getElementById('ml5s'), trk:document.getElementById('trk'), set(k,v){ this[k].textContent=v; } };
@@ -46,27 +47,47 @@ window.addEventListener('load', () => {
   socket.onopen  = () => HUD.set('ws','open');
   socket.onclose = () => HUD.set('ws','closed');
   socket.onerror = () => HUD.set('ws','error');
+
   socket.onmessage = (event) => {
-    const text = event.data instanceof Blob ? '' : String(event.data);
-    if (event.data instanceof Blob){ const r = new FileReader(); r.onload = ()=>handleIncomingMessage(r.result); r.readAsText(event.data); }
-    else { handleIncomingMessage(text); }
+    if (event.data instanceof Blob) {
+      const r = new FileReader();
+      r.onload = () => handleIncomingMessage(r.result);
+      r.readAsText(event.data);
+    } else {
+      handleIncomingMessage(String(event.data));
+    }
   };
 
-  function handleIncomingMessage(message) {
-    let data; try { data = JSON.parse(message); } catch { return; }
+  function handleIncomingMessage(text) {
+    let payload;
+    try { payload = JSON.parse(text); } catch { console.warn('[DISPLAY] bad JSON:', text); return; }
 
-    // Optional legacy slider mirroring
-    if (data.emotion && window.emotionSliders) {
-      for (let n in data.emotion) if (window.emotionSliders[n]?.value) window.emotionSliders[n].value(data.emotion[n]);
+    // Optional: mirror sliders sent from control
+    if (payload.emotion && window.emotionSliders) {
+      for (const n in payload.emotion) {
+        window.emotionSliders[n]?.value?.(payload.emotion[n]);
+      }
     }
-    if (data.region && window.regionSliders) {
-      for (let n in data.region) if (window.regionSliders[n]?.value) window.regionSliders[n].value(data.region[n]);
+    if (payload.region && window.regionSliders) {
+      for (const n in payload.region) {
+        window.regionSliders[n]?.value?.(payload.region[n]);
+      }
     }
 
-    // Start/Stop — direct calls (no readiness deferral, rollback style)
-    const action = data.type === 'action' ? data.action : data.action;
-    if (action === 'start' && typeof window.startTracking === 'function') { window.startTracking(); HUD.set('trk','ON'); }
-    if (action === 'stop'  && typeof window.stopTracking  === 'function') { window.stopTracking();  HUD.set('trk','OFF'); }
+    // Start/Stop actions
+    if (payload.type === 'action' || payload.action === 'start') {
+      const action = payload.action;
+      if (action === 'start' && typeof window.startTracking === 'function') {
+        console.log('[DISPLAY] action:start');
+        window.startTracking();
+        HUD.set('trk','ON');
+      }
+      if (action === 'stop' && typeof window.stopTracking === 'function') {
+        console.log('[DISPLAY] action:stop');
+        window.stopTracking();
+        HUD.set('trk','OFF');
+      }
+    }
   }
 });
 </script>

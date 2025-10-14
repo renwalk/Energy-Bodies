@@ -136,10 +136,16 @@ function sendValues(){
   socket.send(JSON.stringify({ type: 'sliders', ...values }));
 }
 
-function sendAction(action){
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify({ type: 'action', action })); // 'start' | 'stop'
+function sendAction(action) {
+  if (socket?.readyState === WebSocket.OPEN) {
+    const msg = JSON.stringify({ type: 'action', action });
+    console.log('[CONTROL] sent', msg);
+    socket.send(msg);
+  } else {
+    console.warn('[CONTROL] WS not open for', action);
+  }
 }
+
 
 // Unified orientation sender (BroadcastChannel + WS fallback)
 function sendOrientation(value){

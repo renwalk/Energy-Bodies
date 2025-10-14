@@ -10,6 +10,7 @@ let orientationChannel; // optional: cross-page control
 let video;
 let poseNet;
 let poses = [];
+let __prevKeypoints = null; // for velocity
 
 // Body shape and rendering
 let segmentProfile = [0.0, 1.0, 0.0];
@@ -38,6 +39,16 @@ let trackingStarted = false;
 const regionNames = ["head", "neck", "armsHands", "chest", "abdomen", "legsFeet"];
 const emotionNames = ["anxiety", "sadness", "joy", "anger", "fear", "calm"];
 
+const regionKeypoints = {
+  head: ["nose", "leftEye", "rightEye", "leftEar", "rightEar"],
+  neck: ["leftShoulder", "rightShoulder"],
+  chest: ["leftShoulder", "rightShoulder"],
+  armsHands: ["leftWrist", "rightWrist", "leftElbow", "rightElbow"],
+  abdomen: ["leftHip", "rightHip"],
+  legsFeet: ["leftKnee", "rightKnee", "leftAnkle", "rightAnkle"]
+};
+
+
 // Layout constants
 const UI_WIDTH = 320;
 const CANVAS_PADDING = 20;
@@ -57,7 +68,9 @@ let regionMaxWidths = {
   spine: 100
 };
 
-let ws;
+let ws; // websocket
+
+// --- ORIENTATION CHANNEL ---
 
 function setOrientation(next) {
   if (next === 'toggle') {
@@ -156,15 +169,39 @@ function setup() {
     video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
     audio: false
   };
-  video = createCapture(constraints, () => console.log('🎥 webcam ready'));
-  video.size(640, 480);
-  video.elt.setAttribute('playsinline',''); // iOS-safe
-  video.hide();
+ // once at load
+    video = createCapture(constraints, () => console.log('🎥 webcam ready'));
+    video.size(640, 480);
 
-  poseNet = ml5.poseNet(video, { detectionType: 'single' }, () => {
-    console.log('🧠 PoseNet model loaded');
-  });
-  poseNet.on('pose', results => { if (!trackingStarted) return; poses = results; });
+    // DOM property form
+    video.elt.playsInline = true;
+
+    video.hide();
+
+poseNet = ml5.poseNet(video, { detectionType: 'single' }, () => console.log('🧠 PoseNet model loaded'));
+
+// PoseNet listener
+let debugPoseCount = 0;
+poseNet.on('pose', results => {
+  // Temporary: log first 10 frames
+  if (debugPoseCount < 10 && results?.length) {
+    console.log('[POSE/raw] count:', results.length);
+    debugPoseCount++;
+  }
+
+  // Gate updates based on start/stop tracking state
+  if (!trackingStarted) return;
+
+  // Process the results once tracking is started
+  poses = results;
+  const pose = results[0]?.pose;
+  if (!pose) return; // If no pose detected, exit early
+
+  // Call updatePoseFactors to compute and store pose metrics
+  updatePoseFactors(pose);
+});
+
+
 
   try {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'; // small robustness tweak
@@ -179,9 +216,16 @@ function setup() {
   // Make them globally visible so display.html can update them
   window.emotionSliders = emotionSliders;
   window.regionSliders = regionSliders;
+  // export once (best at end of setup)
+  window.startTracking = startTracking;
+  window.stopTracking  = stopTracking;
 }
 
 function draw() {
+
+  fill(255); noStroke(); textSize(14);
+  text(`video ${video?.width||0}x${video?.height||0} | poses: ${poses?.length||0} | tracking: ${trackingStarted}`, 12, 20);
+
   // (2) Small, focused responsiveness (no full refactor)
   K = min(width, height) / 900; // tweak 900 to taste if you want larger/smaller baseline
 
@@ -239,7 +283,7 @@ function draw() {
   // originOffset.x = UI_WIDTH + (width - UI_WIDTH - CANVAS_PADDING * 2) / 2 + CANVAS_PADDING;
 
   // --- Draw body shape ---
-  drawBodyShape(regionSpacings, fearScale);
+  drawBodyShape(regionSpacings, fearScale, smoothedStructure, smoothedBalance);
 
   // --- Draw layers (with tiny perf guardrails) ---
   drawEmotionLayers(emotionGraphics, joyAmt, sadnessAmt, angerAmt);
@@ -274,6 +318,42 @@ function draw() {
   textSize(14);
   text(`[${displayOrientation}]`, 12, 20);
   pop();
+
+  // --- FINAL BLIT (your existing code) ---
+clear();
+if (displayOrientation === "portrait") {
+  push();
+  translate(0, height);
+  rotate(-HALF_PI);
+  image(scene, 0, 0, height, width);
+  pop();
+} else {
+  image(scene, 0, 0, width, height);
+}
+
+// ✅ Draw skeleton OVER the final image for debugging
+if (trackingStarted && poses && poses.length && video && video.width && video.height) {
+  const s = Math.min(width / video.width, height / video.height);
+  push();
+  translate(width/2, height/2);
+  scale(s);
+  stroke(255); strokeWeight(2); fill(255);
+  const p = poses[0].pose;
+
+  // keypoints
+  for (const kp of p.keypoints) {
+    if (kp.score > 0.5) {
+      circle(kp.position.x - video.width/2, kp.position.y - video.height/2, 6);
+    }
+  }
+  // skeleton
+  const sk = poses[0].skeleton || [];
+  for (const seg of sk) {
+    const a = seg[0].position, b = seg[1].position;
+    line(a.x - video.width/2, a.y - video.height/2, b.x - video.width/2, b.y - video.height/2);
+  }
+  pop();
+}
 }
 
 function drawBodyShape(regionSpacings, fearScale) {
@@ -499,50 +579,95 @@ function drawEmotionLayers(pg, joyAmt, sadnessAmt, angerAmt) {
 }
 
 function startTracking() {
-  if (trackingStarted) return;           // prevent double-start
+  if (trackingStarted) return; // Prevent double start
   trackingStarted = true;
-
-  if (!video) {
-    const constraints = {
-      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-      audio: false
-    };
-    video = createCapture(constraints, ()=>console.log('🎥 webcam ready'));
-    video.size(640,480); video.hide();
-  }
-
-  if (!poseNet) {
-    poseNet = ml5.poseNet(video, { detectionType: 'single' }, ()=>console.log('🧠 PoseNet model loaded'));
-    poseNet.on('pose', results => { if (!trackingStarted) return; poses = results; });
-  }
-
-
-video = createCapture({ video: true, audio: false }, ()=>console.log('🎥 webcam ready'));
-video.size(640,480); video.hide();
-
-poseNet = ml5.poseNet(video, { detectionType: 'single' }, ()=>console.log('🧠 PoseNet model loaded'));
-poseNet.on('pose', results => { if (!trackingStarted) return; poses = results; });
+  console.log('[TRACKING] ON');
 }
 
 function stopTracking() {
-  if (video) {
-    video.remove();
-    video = null;
-  }
-  if (poseNet) {
-    poseNet.removeListener("pose", gotPoses);
-    poseNet = null;
-  }
+  if (!trackingStarted) return; // Prevent double stop
   trackingStarted = false;
+  poses = [];
+  console.log('[TRACKING] OFF');
 }
 
-function gotPoses(results) {
-  if (results.length > 0) {
-    let pose = results[0].pose;
-    poses = results;
-    // (unchanged metrics and mapping)
+
+function updatePoseFactors(pose) {
+  // Ensure pose.keypoints is valid
+  if (!pose || !pose.keypoints) return;
+
+  const kp = pose.keypoints.filter(k => k.score > 0.5); // Only use high-confidence keypoints
+  if (!kp.length) return;
+
+  // Calculate movement velocity, structure, balance, etc.
+  let velAvg = 0;
+  if (__prevKeypoints) {
+    const diag = Math.hypot(video?.width || 640, video?.height || 480) || 1;
+    let sum = 0, n = 0;
+    for (const k of kp) {
+      const prev = __prevKeypoints.find(p => p.part === k.part);
+      if (!prev) continue;
+      const dx = (k.position.x - prev.position.x) / diag;
+      const dy = (k.position.y - prev.position.y) / diag;
+      sum += Math.hypot(dx, dy);
+      n++;
+    }
+    if (n > 0) velAvg = sum / n; // Velocity calculation
   }
+  __prevKeypoints = kp.map(k => ({ part: k.part, position: { x: k.position.x, y: k.position.y } }));
+
+  // Normalize and smooth
+  const vNorm = constrain(map(velAvg, 0.0008, 0.02, 0, 1), 0, 1);
+  movementVelocity = lerp(movementVelocity, vNorm, 0.2); // Smooth velocity
+
+  // Structure calculation: torso openness (shoulder width vs. wrist span)
+  const Ls = pose.leftShoulder, Rs = pose.rightShoulder;
+  const Lw = pose.leftWrist, Rw = pose.rightWrist;
+  let structure = 0;
+  if (Ls && Rs && Lw && Rw) {
+    const span = dist(Ls.x, Ls.y, Rs.x, Rs.y);
+    const lw = dist(Ls.x, Ls.y, Lw.x, Lw.y) / span;
+    const rw = dist(Rs.x, Rs.y, Rw.x, Rw.y) / span;
+    structure = constrain(map((lw + rw) * 0.5, 0.7, 2.0, 0, 1), 0, 1);
+  }
+  smoothedStructure = lerp(smoothedStructure, structure, 0.15);
+
+  // Balance: shoulder and hip alignment
+  const shoulderDiff = abs(Ls.y - Rs.y);
+  const hipDiff = abs(pose.leftHip.y - pose.rightHip.y);
+  smoothedBalance = lerp(smoothedBalance, shoulderDiff + hipDiff, 0.15);
+
+  // Posture lean: torso lean calculation
+  let lean = 0;
+  if (Ls && Rs && pose.leftHip && pose.rightHip) {
+    const sx = (Ls.x + Rs.x) / 2, sy = (Ls.y + Rs.y) / 2;
+    const hx = (pose.leftHip.x + pose.rightHip.x) / 2, hy = (pose.leftHip.y + pose.rightHip.y) / 2;
+    const ang = Math.atan2(hy - sy, hx - sx);
+    lean = constrain(map(Math.abs(ang), 0.0, Math.PI / 6, 0, 1), 0, 1);
+  }
+  smoothedPostureLean = lerp(smoothedPostureLean, lean, 0.15);
+
+  // Average Y position of torso
+  const avgY = (pose.leftShoulder.y + pose.rightShoulder.y) / 2;
+  smoothedAvgY = lerp(smoothedAvgY, avgY, 0.15);
+
+  // Map the pose factors to emotion values
+  let poseAnxiety = constrain(map(movementVelocity, 0, 40, 0, 5), 0, 5);
+  let poseCalm = constrain(map(smoothedBalance, 0, 100, 5, 0), 0, 5);
+  let poseSadness = constrain(map(smoothedAvgY, 0, height, 0, 5), 0, 5);
+  let poseFear = constrain(map(smoothedPostureLean, 0, 200, 0, 5), 0, 5);
+  let poseJoy = constrain(map(smoothedStructure, 0, 100, 0, 5), 0, 5);
+
+  // Blend PoseNet with manual sliders (60% PoseNet, 40% manual slider)
+  const blend = (poseVal, sliderVal) => lerp(sliderVal, poseVal, 0.6);
+  emotionSliders["anxiety"].value(blend(poseAnxiety, emotionSliders["anxiety"].value()));
+  emotionSliders["calm"].value(blend(poseCalm, emotionSliders["calm"].value()));
+  emotionSliders["sadness"].value(blend(poseSadness, emotionSliders["sadness"].value()));
+  emotionSliders["fear"].value(blend(poseFear, emotionSliders["fear"].value()));
+  emotionSliders["joy"].value(blend(poseJoy, emotionSliders["joy"].value()));
 }
+
+
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
