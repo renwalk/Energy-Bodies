@@ -1,131 +1,155 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Energy Bodies Control</title>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
   <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background: black;
-      color: white;
-      font-family: sans-serif;
-    }
+    :root { color-scheme: dark; }
+    body { margin: 0; padding: 0; background: #000; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    #status { position: fixed; top: 8px; right: 12px; font-size: 12px; opacity: 0.8; }
+    .pill { padding: 2px 8px; border-radius: 999px; background: #222; display: inline-block; margin-left: 6px; }
+    canvas { display: block; }
   </style>
 </head>
 <body>
+  <div id="status">WS: <span id="wsState" class="pill">connecting…</span> | Tracking: <span id="trkState" class="pill">OFF</span></div>
+
 <script>
+// -----------------
+// Config + Globals
+// -----------------
 let socket;
 let emotionNames = ["anxiety", "sadness", "joy", "anger", "fear", "calm"];
 let regionNames = ["head", "neck", "armsHands", "chest", "abdomen", "legsFeet", "spine"];
 let sliders = {};
+let trackingStarted = false; // local UI mirror
+let sendTimer = null;        // throttle slider sends
+
+// Safe BroadcastChannel (same-origin tabs) + fallback to WS
+let ch = null;
+try { ch = new BroadcastChannel('energy-bodies-orientation'); } catch(e) { ch = null; }
+
+function wsUrl(port = 8080){
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${location.hostname}:${port}`;
+}
 
 function setup() {
   createCanvas(400, windowHeight);
   background(0);
 
-  // --- Auto-detect WebSocket host ---
-  const host = window.location.hostname;
-  socket = new WebSocket(`ws://${host}:8080`);
+  // ---- WebSocket setup ----
+  socket = new WebSocket(wsUrl(8080));
+  const $ws = document.getElementById('wsState');
 
-  socket.onopen = () => {
-    console.log(`✅ CONNECTED to WebSocket server at ws://${host}:8080`);
-  };
-  socket.onerror = (err) => {
-    console.error("❌ WebSocket error:", err);
+  socket.onopen = () => { $ws.textContent = 'open'; };
+  socket.onclose = () => { $ws.textContent = 'closed'; };
+  socket.onerror = () => { $ws.textContent = 'error'; };
+
+  // (Optional) react to messages from the display to keep local UI in sync
+  socket.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data);
+      if (msg && msg.type === 'tracking') {
+        setTrackingState(!!msg.on);
+      }
+    } catch(e) { /* ignore */ }
   };
 
   let y = 50;
 
-  // Emotion sliders
-  createLabel("Emotion Sliders", y);
-  y += 40;
+  // Section labels
+  sectionLabel('Emotion Sliders', y); y += 40;
   emotionNames.forEach(name => {
-    createLabel(name, y);
+    rowLabel(name, y);
     sliders[name] = createSlider(0, 5, 0, 0.1);
     sliders[name].position(120, y);
-    sliders[name].input(sendValues);
+    sliders[name].input(sendValuesThrottled);
     y += 30;
   });
 
   y += 20;
-
-  // Region sliders
-  createLabel("Region Sliders", y);
-  y += 40;
+  sectionLabel('Region Sliders', y); y += 40;
   regionNames.forEach(name => {
-    createLabel(name, y);
-    if (name === "spine") {
-      sliders[name] = createSlider(0, 100, 0, 1);
-    } else {
-      sliders[name] = createSlider(0, 5, 0, 0.1);
-    }
+    rowLabel(name, y);
+    const cfg = name === 'spine' ? [0,100,0,1] : [0,5,0,0.1];
+    sliders[name] = createSlider(...cfg);
     sliders[name].position(120, y);
-    sliders[name].input(sendValues);
+    sliders[name].input(sendValuesThrottled);
     y += 30;
   });
 
   y += 30;
 
-  // Start/Stop buttons
-  let startBtn = createButton("Start Tracking");
+  // ---- Start / Stop buttons ----
+  const startBtn = createButton('Start Tracking');
   startBtn.position(20, y);
-  startBtn.mousePressed(() => sendAction("start"));
+  startBtn.mousePressed(() => {
+    sendAction('start');
+    setTrackingState(true); // optimistic local state
+  });
 
-  let stopBtn = createButton("Stop Tracking");
+  const stopBtn = createButton('Stop Tracking');
   stopBtn.position(150, y);
-  stopBtn.mousePressed(() => sendAction("stop"));
+  stopBtn.mousePressed(() => {
+    sendAction('stop');
+    setTrackingState(false); // optimistic local state
+  });
+
+  // Initial state
+  setTrackingState(false);
 }
 
-function draw() {
-  background(0); // keep background black
+function windowResized(){ resizeCanvas(400, windowHeight); }
+
+function draw(){ background(0); }
+
+// -----------------
+// UI helpers
+// -----------------
+function sectionLabel(txt, y){
+  const d = createDiv(txt); d.position(20, y); d.style('color', '#9ad'); d.style('font-weight', '600');
+}
+function rowLabel(txt, y){
+  const d = createDiv(txt); d.position(20, y); d.style('color', '#fff');
+}
+function setTrackingState(on){
+  trackingStarted = on;
+  document.getElementById('trkState').textContent = on ? 'ON' : 'OFF';
 }
 
-function createLabel(txt, y) {
-  let lbl = createDiv(txt);
-  lbl.position(20, y);
-  lbl.style("color", "#ffffff");
+// -----------------
+// Messaging
+// -----------------
+function sendValuesThrottled(){
+  if (sendTimer) return;
+  sendTimer = setTimeout(() => { sendTimer = null; sendValues(); }, 60); // ~16fps max
 }
 
-function sendValues() {
-  if (socket.readyState !== WebSocket.OPEN) return;
-  let values = { emotion: {}, region: {} };
+function sendValues(){
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  const values = { emotion: {}, region: {} };
   emotionNames.forEach(name => values.emotion[name] = sliders[name].value());
-  regionNames.forEach(name => values.region[name] = sliders[name].value());
-  socket.send(JSON.stringify(values));
+  regionNames.forEach(name => values.region[name]   = sliders[name].value());
+  // Keep legacy shape but add a type field for clarity
+  socket.send(JSON.stringify({ type: 'sliders', ...values }));
 }
 
-function sendAction(action) {
-  if (socket.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify({ action }));
+function sendAction(action){
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: 'action', action })); // 'start' | 'stop'
 }
 
-function sendOrientation(value) {
-// 1) BroadcastChannel (works if display + control run on same origin)
-if (value === 'toggle') ch.postMessage({ type: 'toggle' });
-else ch.postMessage({ type: 'orientation', value });
-
-
-// 2) WebSocket fallback (works across devices)
-if (socket && socket.readyState === WebSocket.OPEN) {
-socket.send(JSON.stringify({ type: 'orientation', value }));
-}
-}
-
-</script>
-
-<button onclick="sendOrientation('portrait')">Portrait</button>
-<button onclick="sendOrientation('landscape')">Landscape</button>
-<button onclick="sendOrientation('toggle')">Toggle</button>
-
-<script>
-  const ch = new BroadcastChannel('energy-bodies-orientation');
-  function sendOrientation(value) {
-    if (value === 'toggle') ch.postMessage({ type: 'toggle' });
-    else ch.postMessage({ type: 'orientation', value });
+// Unified orientation sender (BroadcastChannel + WS fallback)
+function sendOrientation(value){
+  // 1) Same-origin tabs (no server needed)
+  try { if (ch) ch.postMessage(value === 'toggle' ? { type:'toggle' } : { type:'orientation', value }); } catch (e) {}
+  // 2) WebSocket fallback across devices
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(value === 'toggle' ? { type:'toggle' } : { type:'orientation', value }));
   }
+}
 </script>
 </body>
 </html>
-

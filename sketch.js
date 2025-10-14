@@ -3,6 +3,8 @@
 // 2) Small responsive factor K used ONLY where it matters (region widths + two magic offsets)
 // 3) Optional: lighter density in background layers for faster first paint (guardrails)
 
+
+
 console.log("✅ sketch.js is starting to load...");
 
 // --- ORIENTATION ---
@@ -115,14 +117,13 @@ function setup() {
 
   // Off-screen scene buffer
   scene = createGraphics(width, height);
-  scene.colorMode(RGB);
-  scene.noFill();
-  scene.stroke(255);
-  scene.strokeWeight(2);
-
   patternGraphics = createGraphics(width, height);
   shapeMask = createGraphics(width, height);
   emotionGraphics = createGraphics(width, height);
+
+  [scene, patternGraphics, shapeMask, emotionGraphics].forEach(g=>{
+    g.colorMode(RGB); g.noFill(); g.stroke(255); g.strokeWeight(2);
+  });
 
   originOffset = createVector(width / 2, height / 2);
 
@@ -156,6 +157,20 @@ function setup() {
       return spineVal;
     }
   };
+
+    const constraints = {
+    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+    audio: false
+  };
+  video = createCapture(constraints, () => console.log('🎥 webcam ready'));
+  video.size(640, 480);
+  video.elt.setAttribute('playsinline',''); // iOS-safe
+  video.hide();
+
+  poseNet = ml5.poseNet(video, { detectionType: 'single' }, () => {
+    console.log('🧠 PoseNet model loaded');
+  });
+  poseNet.on('pose', results => { if (!trackingStarted) return; poses = results; });
 
   try {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'; // small robustness tweak
@@ -490,25 +505,29 @@ function drawEmotionLayers(pg, joyAmt, sadnessAmt, angerAmt) {
 }
 
 function startTracking() {
-  const constraints = {
-    video: {
-      facingMode: "user",
-      width: { ideal: 640 },
-      height: { ideal: 480 }
-    }
-  };
+  if (trackingStarted) return;           // prevent double-start
+  trackingStarted = true;
 
-  video = createCapture(constraints, () => {
-    console.log("Camera started");
-  });
-  video.hide();
-  video.position(-9999, -9999);
+  if (!video) {
+    const constraints = {
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    };
+    video = createCapture(constraints, ()=>console.log('🎥 webcam ready'));
+    video.size(640,480); video.hide();
+  }
 
-  poseNet = ml5.poseNet(video, () => {
-    console.log("PoseNet Ready");
-    trackingStarted = true;
-  });
-  poseNet.on("pose", gotPoses);
+  if (!poseNet) {
+    poseNet = ml5.poseNet(video, { detectionType: 'single' }, ()=>console.log('🧠 PoseNet model loaded'));
+    poseNet.on('pose', results => { if (!trackingStarted) return; poses = results; });
+  }
+
+
+video = createCapture({ video: true, audio: false }, ()=>console.log('🎥 webcam ready'));
+video.size(640,480); video.hide();
+
+poseNet = ml5.poseNet(video, { detectionType: 'single' }, ()=>console.log('🧠 PoseNet model loaded'));
+poseNet.on('pose', results => { if (!trackingStarted) return; poses = results; });
 }
 
 function stopTracking() {

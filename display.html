@@ -4,97 +4,68 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Energy Bodies — Display</title>
-
-  <!-- silence favicon 404 -->
   <link rel="icon" href="data:,">
 
-  <!-- p5 FIRST -->
+  <!-- Order: p5 → ml5 → sketch -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
-
-  <!-- REMOVE p5.sound for now; add later only if needed -->
-
-  <!-- ml5 AFTER p5 (CDN, not local) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ml5/0.12.2/ml5.min.js"></script>
-
-  <!-- your sketch LAST -->
   <script defer src="./sketch.js"></script>
+
 
   <style>
     html, body { margin:0; padding:0; background:#000; overflow:hidden; }
     canvas { display:block; }
+    #hud { position:fixed; top:10px; left:12px; font:12px system-ui; color:#fff; opacity:.8; background:rgba(24,24,24,.6); padding:6px 8px; border-radius:8px; }
+    .pill{ padding:2px 8px; border-radius:999px; background:#222; margin-left:6px; }
   </style>
 </head>
-
 <body>
+<div id="hud">WS:<span id="ws" class="pill">-</span> ML5:<span id="ml5s" class="pill">-</span> Track:<span id="trk" class="pill">OFF</span></div>
 <script>
 let socket;
+const HUD = { ws:document.getElementById('ws'), ml5s:document.getElementById('ml5s'), trk:document.getElementById('trk'), set(k,v){ this[k].textContent=v; } };
 
 window.addEventListener('load', () => {
-  console.log("✅ display.html loaded, starting WebSocket...");
+  console.log('✅ display.html loaded, starting WebSocket...');
 
-// Get current hostname from the page URL (works for both laptop + iPad)
-const host = window.location.hostname;
+  // Secure-context hint (camera needs HTTPS or localhost)
+  const secureOK = location.protocol==='https:' || ['localhost','127.0.0.1'].includes(location.hostname);
+  if (!secureOK) console.warn('⚠️ Use HTTPS or localhost for camera access.');
 
-// Connect to WebSocket server on same host at port 8080
-socket = new WebSocket(`ws://${host}:8080`);
+  // Reflect ml5 presence in HUD
+  HUD.set('ml5s', window.ml5 ? 'ready' : 'missing');
 
+  // Build WS URL that auto-switches to wss on https
+  function wsUrl(port=8080){
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    return `${proto}://${location.hostname}:${port}`;
+  }
 
-
-  socket.onopen = () => {
-    console.log("✅ CONNECTED to WebSocket server");
-  };
-
-  socket.onerror = (err) => {
-    console.error("❌ WebSocket error:", err);
-  };
-
+  socket = new WebSocket(wsUrl(8080));
+  socket.onopen  = () => HUD.set('ws','open');
+  socket.onclose = () => HUD.set('ws','closed');
+  socket.onerror = () => HUD.set('ws','error');
   socket.onmessage = (event) => {
-    // If Blob → convert to string
-    if (event.data instanceof Blob) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        handleIncomingMessage(reader.result);
-      };
-      reader.readAsText(event.data);
-    } else {
-      handleIncomingMessage(event.data);
-    }
+    const text = event.data instanceof Blob ? '' : String(event.data);
+    if (event.data instanceof Blob){ const r = new FileReader(); r.onload = ()=>handleIncomingMessage(r.result); r.readAsText(event.data); }
+    else { handleIncomingMessage(text); }
   };
 
   function handleIncomingMessage(message) {
-    let data;
-    try {
-      data = JSON.parse(message);
-    } catch (err) {
-      console.warn("❌ Invalid JSON from WebSocket:", message);
-      return;
-    }
+    let data; try { data = JSON.parse(message); } catch { return; }
 
-    // ✅ Update emotion sliders in memory
+    // Optional legacy slider mirroring
     if (data.emotion && window.emotionSliders) {
-      for (let name in data.emotion) {
-        if (window.emotionSliders[name] && typeof window.emotionSliders[name].value === "function") {
-          window.emotionSliders[name].value(data.emotion[name]);
-        }
-      }
+      for (let n in data.emotion) if (window.emotionSliders[n]?.value) window.emotionSliders[n].value(data.emotion[n]);
     }
-
-    // ✅ Update region sliders in memory
     if (data.region && window.regionSliders) {
-      for (let name in data.region) {
-        if (window.regionSliders[name] && typeof window.regionSliders[name].value === "function") {
-          window.regionSliders[name].value(data.region[name]);
-        }
-      }
+      for (let n in data.region) if (window.regionSliders[n]?.value) window.regionSliders[n].value(data.region[n]);
     }
 
-    // ✅ Handle start/stop tracking
-    if (data.action === "start" && typeof window.startTracking === "function") {
-      window.startTracking();
-    }
-    if (data.action === "stop" && typeof window.stopTracking === "function") {
-      window.stopTracking();
-    }
+    // Start/Stop — direct calls (no readiness deferral, rollback style)
+    const action = data.type === 'action' ? data.action : data.action;
+    if (action === 'start' && typeof window.startTracking === 'function') { window.startTracking(); HUD.set('trk','ON'); }
+    if (action === 'stop'  && typeof window.stopTracking  === 'function') { window.stopTracking();  HUD.set('trk','OFF'); }
   }
 });
 </script>
