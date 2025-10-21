@@ -321,38 +321,34 @@ function draw() {
   text(`[${displayOrientation}]`, 12, 20);
   pop();
 
-  // --- FINAL BLIT (your existing code) ---
-clear();
-if (displayOrientation === "portrait") {
-  push();
-  translate(0, height);
-  rotate(-HALF_PI);
-  image(scene, 0, 0, height, width);
-  pop();
-} else {
-  image(scene, 0, 0, width, height);
-}
 
-// ✅ Draw skeleton OVER the final image for debugging
+// ✅ Draw skeleton OVER the final image for debugging (orientation-aware)
 if (trackingStarted && poses && poses.length && video && video.width && video.height) {
-  const s = Math.min(width / video.width, height / video.height);
+  const vw = video.width, vh = video.height;
   push();
-  translate(width/2, height/2);
-  scale(s);
+
+  if (displayOrientation === "portrait") {
+    translate(0, height);
+    rotate(-HALF_PI);
+    const s = Math.min(height / vw, width / vh); // note the swapped axes
+    translate(width/2, height/2);
+    scale(s);
+  } else {
+    const s = Math.min(width / vw, height / vh);
+    translate(width/2, height/2);
+    scale(s);
+  }
+
   stroke(255); strokeWeight(2); fill(255);
   const p = poses[0].pose;
 
-  // keypoints
   for (const kp of p.keypoints) {
-    if (kp.score > 0.5) {
-      circle(kp.position.x - video.width/2, kp.position.y - video.height/2, 6);
-    }
+    if (kp.score > 0.5) circle(kp.position.x - vw/2, kp.position.y - vh/2, 6);
   }
-  // skeleton
   const sk = poses[0].skeleton || [];
   for (const seg of sk) {
     const a = seg[0].position, b = seg[1].position;
-    line(a.x - video.width/2, a.y - video.height/2, b.x - video.width/2, b.y - video.height/2);
+    line(a.x - vw/2, a.y - vh/2, b.x - vw/2, b.y - vh/2);
   }
   pop();
 }
@@ -677,7 +673,7 @@ function updatePoseFactors(pose) {
   smoothedAvgY = lerp(smoothedAvgY, avgY, 0.1);
 
   // Map the pose factors to emotion values
-  let poseAnxiety = constrain(map(movementVelocity, 0, 40, 0, 5), 0, 5);
+  let poseAnxiety = constrain(map(movementVelocity, 0, 30, 0, 5), 0, 5);
   let poseCalm = constrain(map(smoothedBalance, 0, 100, 5, 0), 0, 5);
   let poseSadness = constrain(map(smoothedAvgY, 0, height, 0, 5), 0, 5);
   let poseFear = constrain(map(smoothedPostureLean, 0, 200, 0, 5), 0, 5);
