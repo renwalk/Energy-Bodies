@@ -27,6 +27,8 @@ let smoothedBalance = 0;
 let smoothedPostureLean = 0;
 let smoothedAvgY = 0;
 let prevVelocity = 0;
+let fastVel = 0; // fast EMA of velocity (reacts quickly)
+let slowVel = 0; // slow EMA of velocity (baseline)
 
 // UI Controls (now dummy)
 let regionSliders = {};
@@ -618,7 +620,30 @@ function updatePoseFactors(pose) {
 
   // Normalize and smooth
   const vNorm = constrain(map(velAvg, 0.0008, 0.02, 0, 1), 0, 1);
-  movementVelocity = lerp(movementVelocity, vNorm, 0.2); // Smooth velocity
+  movementVelocity = lerp(movementVelocity, vNorm, 0.3); // Smooth velocity
+
+  // Dual-EMA to capture bursts (fast changes over baseline)
+  fastVel = lerp(fastVel, vNorm, 0.6); // reacts fast — increase for more sensitivity
+  slowVel = lerp(slowVel, vNorm, 0.05); // tracks baseline — decrease for stickier baseline
+
+
+  // Burst magnitude (0..1 roughly). Clamp at 0 to ignore dips.
+  var burst = Math.max(0, fastVel - slowVel);
+
+
+  // Optional: emphasize hand snaps (add wrist-specific burst)
+  // Computes wrist-only velocity and blends a little in.
+  try {
+  const lw = pose.leftWrist, rw = pose.rightWrist;
+  if (lw && rw && lw.confidence > 0.3 && rw.confidence > 0.3) {
+  // Fallback to keypoint objects if needed
+  }
+  } catch (_) {}
+
+
+  // Map burst -> anger in 0..5. Tune thresholds for your footage.
+  // If anger feels too sensitive, raise the lower bound (e.g., 0.03). If too dull, lower it.
+  var poseAnger = constrain(map(burst, 0.025, 0.5, 0, 5), 0, 5);
 
   // Structure calculation: torso openness (shoulder width vs. wrist span)
   const Ls = pose.leftShoulder, Rs = pose.rightShoulder;
@@ -649,14 +674,15 @@ function updatePoseFactors(pose) {
 
   // Average Y position of torso
   const avgY = (pose.leftShoulder.y + pose.rightShoulder.y) / 2;
-  smoothedAvgY = lerp(smoothedAvgY, avgY, 0.15);
+  smoothedAvgY = lerp(smoothedAvgY, avgY, 0.1);
 
   // Map the pose factors to emotion values
   let poseAnxiety = constrain(map(movementVelocity, 0, 40, 0, 5), 0, 5);
   let poseCalm = constrain(map(smoothedBalance, 0, 100, 5, 0), 0, 5);
   let poseSadness = constrain(map(smoothedAvgY, 0, height, 0, 5), 0, 5);
   let poseFear = constrain(map(smoothedPostureLean, 0, 200, 0, 5), 0, 5);
-  let poseJoy = constrain(map(smoothedStructure, 0, 100, 0, 5), 0, 5);
+  let poseJoy = constrain(map(smoothedStructure, 0, 1, 0, 5), 0, 5);
+
 
   // Blend PoseNet with manual sliders (60% PoseNet, 40% manual slider)
   const blend = (poseVal, sliderVal) => lerp(sliderVal, poseVal, 0.6);
@@ -665,6 +691,7 @@ function updatePoseFactors(pose) {
   emotionSliders["sadness"].value(blend(poseSadness, emotionSliders["sadness"].value()));
   emotionSliders["fear"].value(blend(poseFear, emotionSliders["fear"].value()));
   emotionSliders["joy"].value(blend(poseJoy, emotionSliders["joy"].value()));
+  emotionSliders['anger'].value( blend(poseAnger, emotionSliders['anger'].value()) );
 }
 
 
