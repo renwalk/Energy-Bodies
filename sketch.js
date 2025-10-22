@@ -29,6 +29,17 @@ let smoothedAvgY = 0;
 let prevVelocity = 0;
 let fastVel = 0; // fast EMA of velocity (reacts quickly)
 let slowVel = 0; // slow EMA of velocity (baseline)
+let followPose = false; // toggle (use the button below)
+let followAxis = 'both';  // valid values: 'both' | 'x' | 'y'
+let poseTx = 0, poseTy = 0; // torso center in VIDEO pixels
+let poseRot = 0; // radians
+let poseSc = 1; // relative scale
+let _poseSeenAt = 0; // last time we had a valid torso (ms)
+let regionOffsets = {}; // per‑region {x, y} offsets in SCENE pixels
+for (const r of (window.regionNames || ["head","neck","armsHands","chest","abdomen","legsFeet"])) {
+  regionOffsets[r] = { x: 0, y: 0 };
+}
+
 
 // UI Controls (now dummy)
 let regionSliders = {};
@@ -201,6 +212,20 @@ poseNet.on('pose', results => {
 
   // Call updatePoseFactors to compute and store pose metrics
   updatePoseFactors(pose);
+  updatePoseTransform(pose);
+  coupleRegionsToPose(pose)
+  updatePoseAnchor(pose);
+
+  const btnFollow = createButton('Follow Pose');
+  btnFollow.position(12, 60);
+  btnFollow.mousePressed(()=> followPose = !followPose);
+  const btnAxis = createButton('Axis: both/x/y');
+  btnAxis.position(120, 60);
+  btnAxis.mousePressed(()=>{
+  followAxis = followAxis === 'both' ? 'x' : followAxis === 'x' ? 'y' : 'both';
+  console.log('[AXIS]', followAxis);
+});
+
 });
 
 
@@ -221,6 +246,7 @@ poseNet.on('pose', results => {
   // export once (best at end of setup)
   window.startTracking = startTracking;
   window.stopTracking  = stopTracking;
+  
 }
 
 function draw() {
@@ -302,17 +328,9 @@ function draw() {
   scene.image(emotionImage, 0, 0);
   scene.image(patternImage, 0, 0);
 
-  // --- FINAL BLIT: same as yours (kept intact) ---
-  clear();
-  if (displayOrientation === "portrait") {
-    push();
-    translate(0, height);
-    rotate(-HALF_PI);
-    image(scene, 0, 0, height, width); // note swapped dims
-    pop();
-  } else {
-    image(scene, 0, 0, width, height);
-  }
+  // --- FINAL BLIT
+  blitSceneTranslateOnly(scene);
+  
   // small on-screen state badge
   push();
   noStroke();
@@ -353,6 +371,65 @@ if (trackingStarted && poses && poses.length && video && video.width && video.he
   pop();
 }
 }
+
+function blitSceneTranslateOnly(sceneGfx) {
+  clear();
+  push();
+  imageMode(CENTER);
+
+
+  const vw = video?.width || width;
+  const vh = video?.height || height;
+
+
+  // Compute the same scale that the skeleton uses (orientation‑aware)
+  let s;
+  if (displayOrientation === 'portrait') {
+    translate(0, height);
+    rotate(-HALF_PI);
+    s = Math.min(height / vw, width / vh); // swapped axes
+  } else {
+    s = Math.min(width / vw, height / vh);
+  }
+
+
+  // Base draw at canvas center
+  let cx = width / 2;
+  let cy = height / 2;
+
+
+  // If following and pose is fresh, offset by projected pose delta
+  if (followPose && (millis() - _poseSeenAt < 300)) {
+    const dx = (poseTx - vw / 2) * s;
+    const dy = (poseTy - vh / 2) * s;
+    if (followAxis === 'both' || followAxis === 'x') cx += dx;
+    if (followAxis === 'both' || followAxis === 'y') cy += dy;
+  }
+
+
+  translate(cx, cy);
+
+
+  // IMPORTANT: no scale, no rotate — body stays same size
+  if (displayOrientation === 'portrait') {
+  image(sceneGfx, 0, 0, height, width);
+  } else {
+  image(sceneGfx, 0, 0, width, height);
+  }
+
+
+  pop();
+}
+
+function videoToScene(x, y) {
+  const vw = video?.width || width;
+  const vh = video?.height || height;
+  const s = Math.min(width / vw, height / vh); // NOTE: SCENE is landscape; no portrait swap here
+  const X = width / 2 + (x - vw / 2) * s;
+  const Y = height / 2 + (y - vh / 2) * s;
+  return { X, Y, s };
+  }
+
 
 function drawBodyShape(regionSpacings, fearScale) {
   let stepsPerRegion = 2;
@@ -615,8 +692,8 @@ function updatePoseFactors(pose) {
   __prevKeypoints = kp.map(k => ({ part: k.part, position: { x: k.position.x, y: k.position.y } }));
 
   // Normalize and smooth
-  const vNorm = constrain(map(velAvg, 0.0008, 0.02, 0, 1), 0, 1);
-  movementVelocity = lerp(movementVelocity, vNorm, 0.3); // Smooth velocity
+  const vNorm = constrain(map(velAvg, 0.00015, 0.02, 0, 1), 0, 1);
+  movementVelocity = lerp(movementVelocity, vNorm, 0.5); // Smooth velocity
 
   // Dual-EMA to capture bursts (fast changes over baseline)
   fastVel = lerp(fastVel, vNorm, 0.6); // reacts fast — increase for more sensitivity
@@ -690,6 +767,91 @@ function updatePoseFactors(pose) {
   emotionSliders['anger'].value( blend(poseAnger, emotionSliders['anger'].value()) );
 }
 
+function updatePoseTransform(pose) {
+  if (!pose || !pose.keypoints) return;
+  const get = part => {
+    const k = pose.keypoints.find(p => p.part === part);
+    return (k && k.score > 0.5) ? k.position : null;
+  };
+  const ls = get('leftShoulder');
+  const rs = get('rightShoulder');
+  const lh = get('leftHip');
+  const rh = get('rightHip');
+  if (!(ls && rs && lh && rh)) return;
+
+
+  // Torso center in VIDEO space
+  const cx = (ls.x + rs.x + lh.x + rh.x) / 4;
+  const cy = (ls.y + rs.y + lh.y + rh.y) / 4;
+
+
+  // Shoulder center -> hip center direction (so +Y up)
+  const sx = (ls.x + rs.x) / 2, sy = (ls.y + rs.y) / 2;
+  const hx = (lh.x + rh.x) / 2, hy = (lh.y + rh.y) / 2;
+  const ang = Math.atan2(hy - sy, hx - sx) - Math.PI / 2;
+
+
+  // Relative scale from shoulder width
+  const shoulderW = Math.hypot(ls.x - rs.x, ls.y - rs.y);
+  const baseline = 220; // tune for your footage
+  const s = constrain(shoulderW / baseline, 0.6, 1.8);
+
+
+  // Smooth (tune alphas to taste)
+  poseTx = lerp(poseTx, cx, 0.20);
+  poseTy = lerp(poseTy, cy, 0.20);
+  poseRot = lerp(poseRot, ang, 0.18);
+  poseSc = lerp(poseSc , s , 0.12);
+
+  _poseSeenAt = millis();
+}
+
+function coupleRegionsToPose(pose) {
+  if (!pose || !pose.keypoints) return;
+  const get = part => {
+    const k = pose.keypoints.find(p => p.part === part);
+    return (k && k.score > 0.5) ? k.position : null;
+  };
+  const lw = get('leftWrist');
+  const rw = get('rightWrist');
+  const ls = get('leftShoulder');
+  const rs = get('rightShoulder');
+  if (lw && rw && ls && rs) {
+    const span = dist(ls.x, ls.y, rs.x, rs.y);
+    const wristSpread = dist(lw.x, lw.y, rw.x, rw.y) / max(span, 1e-6); // normalized by shoulder width
+    const armsVal = constrain(map(wristSpread, 0.6, 2.0, 0, 5), 0, 5);
+    regionSliders['armsHands'].value( lerp(regionSliders['armsHands'].value(), armsVal, 0.2) );
+
+
+    const spineSway = ((ls.x + rs.x) * 0.5 - (video?.width || 640) / 2) / max(span, 1e-6);
+    const spineVal = map(spineSway, -1.0, 1.0, 0, regionMaxWidths.spine || 100);
+    regionSliders['spine'].value( lerp(regionSliders['spine'].value(), spineVal, 0.2) );
+    }
+}
+
+function updatePoseAnchor(pose) {
+  if (!pose || !pose.keypoints) return;
+  const get = part => {
+    const k = pose.keypoints.find(p => p.part === part);
+    return (k && k.score > 0.5) ? k.position : null;
+  };
+  const ls = get('leftShoulder');
+  const rs = get('rightShoulder');
+  const lh = get('leftHip');
+  const rh = get('rightHip');
+  if (!(ls && rs && lh && rh)) return;
+
+
+  // Torso center in VIDEO coordinates
+  const cx = (ls.x + rs.x + lh.x + rh.x) / 4;
+  const cy = (ls.y + rs.y + lh.y + rh.y) / 4;
+
+
+  // Smooth just a touch to avoid jitter
+  poseTx = lerp(poseTx, cx, 0.25);
+  poseTy = lerp(poseTy, cy, 0.25);
+  _poseSeenAt = millis();
+}
 
 
 function windowResized() {
