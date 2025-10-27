@@ -4,4 +4,10 @@ html, body {
 }
 canvas {
   display: block;
+  background:#000;
+}
+
+@media print {
+  canvas { background:#fff !important; }
+  html, body { background:#fff !important; }
 }

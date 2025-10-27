@@ -14,13 +14,13 @@ const TUNE = {
     vBlend: 0.5,
     fastEMA: 0.6,
     slowEMA: 0.05,
-    angerBurstMin: 0.025,
-    angerBurstMax: 0.50
+    angerBurstMin: 0.05,
+    angerBurstMax: 1
   },
   emotions: {
     blendPoseVsSlider: 0.60,
-    anxietyFromVel:   { inMin: 0.0, inMax: 1.0, outMin: 0, outMax: 5 },
-    calmFromBalance:  { inMin: 0,   inMax: 80,  outMin: 5, outMax: 0 },
+    anxietyFromVel:   { inMin: 0.3, inMax: 1.5, outMin: 0, outMax: 5 },
+    calmFromBalance:  { inMin: 0.2,   inMax: 50,  outMin: 5, outMax: 0 },
     sadnessFromAvgY:  { inMin: 0,   inMax: null, outMin: 0, outMax: 5 },
     fearFromLean:     { inMin: 0,   inMax: 200, outMin: 0, outMax: 5 },
     joyFromStructure: { inMin: 0,   inMax: 1,   outMin: 0, outMax: 5 }
@@ -39,20 +39,20 @@ const TUNE = {
   ---------------------------------------------------------------------------
   */
   coupling: {
-    armsHands: { wristSpreadMin: 0.75, wristSpreadMax: 2.0, lerp: 0.20 },
+    armsHands: { wristSpreadMin: 2, wristSpreadMax: 5.0, lerp: 0.12 },
     spine:     { swayRange: 1.0, lerp: 0.20 },
 
-    head:   { velMin: 0.00005, velMax: 0.008,  lerp: 0.20 },
-    neck:   { velMin: 0.00005, velMax: 0.006,  lerp: 0.20 },
+    head:   { velMin: 0.0009, velMax: 0.08,  lerp: 0.20 },
+    neck:   { velMin: 0.0001, velMax: 0.01,  lerp: 0.20 },
 
     // Chest reacts to upper-body activity: combine motion + openness (reach)
     chest:  { velMin: 0.00005, velMax: 0.010,  reachMin: 0.7, reachMax: 2.0, lerp: 0.20 },
 
     // Abdomen reacts to torso compression (shoulder↔hip distance) and core motion
-    abdomen:{ velMin: 0.00005, velMax: 0.010,  torsoMin: 1.2, torsoMax: 2.2, lerp: 0.20 },
+    abdomen:{ velMin: 0.0001, velMax: 0.02,  torsoMin: 1.2, torsoMax: 2.2, lerp: 0.20 },
 
     // Legs/feet: combine step width (ankle spread) + leg motion
-    legsFeet:{ velMin: 0.00005, velMax: 0.012, ankleSpreadMin: 0.6, ankleSpreadMax: 2.0, lerp: 0.20 }
+    legsFeet:{ velMin: 0.001, velMax: 0.02, ankleSpreadMin: 0.9, ankleSpreadMax: 3.0, lerp: 0.20 }
   },
   visuals: {
     fear: { baseScaleFrom: 3.0, baseScaleTo: 0.6, freqFrom: 0.1, freqTo: 5.0, pulseAmp: 0.05 },
@@ -119,6 +119,27 @@ const UI_WIDTH = 320, CANVAS_PADDING = 20; let K = 1;
 let regionMaxWidths = { head:60, neck:20, chest:50, armsHands:150, abdomen:80, legsFeet:100, spine:100 };
 let ws;
 
+// --- place near your other UI helpers (top-level in the display sketch) ---
+function addPrintButton() {
+  if (window.__printBtn) return; // guard: don't create twice
+  const btn = document.createElement("button");
+  btn.textContent = "Print Energy Body";
+  btn.style.cssText = [
+    "position:fixed",
+    "bottom:16px",
+    "right:16px",
+    "padding:10px 14px",
+    "font-size:14px",
+    "z-index:99999",            // make sure it sits above the canvas
+    "cursor:pointer",
+  ].join(";");
+
+  btn.addEventListener("click", onPrintClick); // <- you already defined this
+  document.body.appendChild(btn);
+  window.__printBtn = btn;
+}
+
+
 function setOrientation(next){
   if (next==='toggle') displayOrientation = (displayOrientation==='portrait')?'landscape':'portrait';
   else if (next==='portrait'||next==='landscape') displayOrientation = next; else return;
@@ -131,6 +152,9 @@ window.addEventListener('keydown', (ev)=>{ if ((ev.code==='KeyV') || (typeof ev.
 function setup(){
   createCanvas(windowWidth, windowHeight); pixelDensity(1);
   colorMode(RGB); angleMode(RADIANS); noFill(); stroke(255); strokeWeight(2);
+
+  addPrintButton();       
+
 
   scene = createGraphics(width, height);
   patternGraphics = createGraphics(width, height);
@@ -178,7 +202,7 @@ function draw(){
   K = min(width, height)/900;
   regionMaxWidths = { head:60*K, neck:20*K, chest:50*K, armsHands:150*K, abdomen:80*K, legsFeet:100*K, spine:100*K };
 
-  scene.background(0); patternGraphics.clear(); emotionGraphics.clear(); shapeMask.clear();
+  scene.clear(); patternGraphics.clear(); emotionGraphics.clear(); shapeMask.clear();
 
   // emotions
   let vals={}; for (let n of emotionNames) vals[n]=emotionSliders[n].value();
@@ -396,6 +420,87 @@ function updatePoseAnchor(pose){
   const ls=get('leftShoulder'), rs=get('rightShoulder'), lh=get('leftHip'), rh=get('rightHip'); if(!(ls&&rs&&lh&&rh)) return;
   const cx=(ls.x+rs.x+lh.x+rh.x)/4, cy=(ls.y+rs.y+lh.y+rh.y)/4; poseTx=lerp(poseTx,cx,0.25); poseTy=lerp(poseTy,cy,0.25); _poseSeenAt=millis();
 }
+
+
+// when the visitor taps "Print"
+// 1) Optional: upscale capture for sharper prints
+function captureEnergyBodyHiRes() {
+  const src = (typeof scene !== "undefined" && scene) ? scene : window._renderer || null; // p5 canvas
+  const srcCanvas = src?.elt || document.querySelector("canvas");
+  // Render into a higher-res buffer for better print clarity (2x scale)
+  const scale = 2;
+  const w = srcCanvas.width * scale;
+  const h = srcCanvas.height * scale;
+
+  const off = document.createElement("canvas");
+  off.width = w; off.height = h;
+  const ctx = off.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(srcCanvas, 0, 0, w, h);
+  return off.toDataURL("image/jpeg", 0.92); // JPEG prints nicely on dye-sub
+}
+
+// 2) One-button flow
+function onPrintClick() {
+  const pngOrJpg = captureEnergyBodyHiRes();        // or use your original captureEnergyBody()
+  const meta = "MIT Info+ • Energy Bodies";
+  printReceiptKiosk(pngOrJpg, meta);
+}
+
+// Somewhere in setup() after the sketch is ready:
+function addPrintButton() {
+  const btn = document.createElement("button");
+  btn.textContent = "Print Energy Body";
+  btn.style.cssText = "position:fixed;bottom:16px;right:16px;padding:10px 14px;font-size:14px;";
+  btn.addEventListener("click", onPrintClick);
+  document.body.appendChild(btn);
+}
+// call addPrintButton() once your page loads
+
+// 2) One-button flow
+function onPrintClick() {
+  const img = captureOnWhiteForPrint(2);
+  printReceiptKiosk(img, "MIT Info+ • Energy Bodies");
+}
+
+
+function printReceiptKiosk(dataURL, meta="") {
+  const w = window.open("", "_blank", "width=800,height=1200");
+  w.document.write(`
+  <html><head><meta charset="utf-8" />
+  <style>
+    @page { size: 4in 6in; margin: 0; }
+    html, body { height:100%; margin:0; background:#fff; }
+    body { display:flex; }
+    .frame { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+    img { width:100%; height:100%; object-fit: contain; display:block; }
+    .meta { position:absolute; bottom:0.1in; left:0; right:0; text-align:center; font-size:8pt; }
+  </style>
+  </head><body>
+    <div class="frame">
+      <img src="${dataURL}" />
+      <div class="meta">Energy Bodies — ${new Date().toLocaleString()}${meta ? "\\n"+meta : ""}</div>
+    </div>
+    <script>onload=()=>{print(); setTimeout(()=>close(), 400);}<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+function captureOnWhiteForPrint(scale = 2) {
+  const src = (scene?.elt) || document.querySelector("canvas");
+  const off = document.createElement("canvas");
+  off.width = src.width * scale; off.height = src.height * scale;
+  const ctx = off.getContext("2d");
+
+  // White page for printing
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, off.width, off.height);
+
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, 0, 0, off.width, off.height);
+  return off.toDataURL("image/jpeg", 0.92); // or PNG if you prefer
+}
+
 
 function windowResized(){
   resizeCanvas(windowWidth, windowHeight);
