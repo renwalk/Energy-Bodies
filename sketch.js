@@ -1,9 +1,13 @@
 /*
 ==============================================================================
- ENERGY BODIES — PER-REGION WIDTH COUPLING TO MOVEMENT (like arms)
- - Adds motion-driven width control for: head, neck, chest, abdomen, legs/feet
- - Keeps existing armsHands + spine coupling
- - All thresholds live in TUNE.coupling.* so you can tune sensitivity quickly
+ ENERGY BODIES — PER-REGION WIDTH COUPLING + CONTROL PANEL INTEGRATION
+ - Keeps your motion-driven width coupling (head/neck/chest/abdomen/legs + arms/spine)
+ - Adds hooks to work with the iPad control + display receiver:
+   • window.applySliders(emotion, region)
+   • window.startTracking() / window.stopTracking()
+   • Emits pose metrics and tracking state via EnergyBodiesDisplay.* if present
+   • Optional echo back of current slider state (so the iPad mirrors renderer truth)
+ - Consolidates duplicate print helpers
 ==============================================================================
 */
 const TUNE = {
@@ -30,28 +34,15 @@ const TUNE = {
     axis: 'both',
     lerp: { tx: 0.20, ty: 0.20, rot: 0.18, sc: 0.12 }
   },
-  /*
-  ---------------------------------------------------------------------------
-  NEW: Region coupling thresholds
-  - velMin/velMax map average per-region keypoint velocity → slider (0..5)
-  - geom ranges use normalized distances (relative to shoulder span or hip span)
-  - lerp controls smoothing when writing into region sliders
-  ---------------------------------------------------------------------------
-  */
   coupling: {
     armsHands: { wristSpreadMin: 2, wristSpreadMax: 5.0, lerp: 0.12 },
     spine:     { swayRange: 1.0, lerp: 0.20 },
 
-    head:   { velMin: 0.0009, velMax: 0.08,  lerp: 0.20 },
+    head:   { velMin: 0.00009, velMax: 0.008,  lerp: 0.20 },
     neck:   { velMin: 0.0001, velMax: 0.01,  lerp: 0.20 },
 
-    // Chest reacts to upper-body activity: combine motion + openness (reach)
     chest:  { velMin: 0.00005, velMax: 0.010,  reachMin: 0.7, reachMax: 2.0, lerp: 0.20 },
-
-    // Abdomen reacts to torso compression (shoulder↔hip distance) and core motion
-    abdomen:{ velMin: 0.0001, velMax: 0.02,  torsoMin: 1.2, torsoMax: 2.2, lerp: 0.20 },
-
-    // Legs/feet: combine step width (ankle spread) + leg motion
+    abdomen:{ velMin: 0.00001, velMax: 0.002,  torsoMin: 1.2, torsoMax: 2.2, lerp: 0.20 },
     legsFeet:{ velMin: 0.001, velMax: 0.02, ankleSpreadMin: 0.9, ankleSpreadMax: 3.0, lerp: 0.20 }
   },
   visuals: {
@@ -74,7 +65,7 @@ const TUNE = {
   }
 };
 
-console.log("✅ sketch.js (region coupling) is starting to load...");
+console.log("✅ sketch.js (control-integrated) loading...");
 
 // --- ORIENTATION ---
 let displayOrientation = "landscape";
@@ -84,6 +75,9 @@ let scene, orientationChannel;
 let video, poseNet, poses = [];
 let __prevKeypoints = null;         // global previous keypoints (for velocity)
 let __prevByPart = new Map();       // per-part previous pos cache for region motion
+let __lastPoseEmitAt = 0;
+const POSE_EMIT_MS = 80; // ~12.5 fps to keep bandwidth low
+
 
 // Rendering
 let segmentProfile = [0.0, 1.0, 0.0];
@@ -99,10 +93,29 @@ let fastVel = 0, slowVel = 0;
 let followPose = false, followAxis = 'both';
 let poseTx = 0, poseTy = 0, poseRot = 0, poseSc = 1, _poseSeenAt = 0;
 let regionOffsets = {};
-for (const r of (window.regionNames || ["head","neck","armsHands","chest","abdomen","legsFeet"])) regionOffsets[r] = { x: 0, y: 0 };
 
-// UI
-let regionSliders = {}, emotionSliders = {}, startButton, stopButton, trackingStarted = false;
+// PoseNet Skeleton 
+for (const r of (window.regionNames || ["head","neck","armsHands","chest","abdomen","legsFeet"])) regionOffsets[r] = { x: 0, y: 0 };
+let latestPose = null;
+const EDGES = [
+  // torso
+  ['leftShoulder','rightShoulder'],
+  ['leftHip','rightHip'],
+  ['leftShoulder','leftHip'],
+  ['rightShoulder','rightHip'],
+  // arms
+  ['leftShoulder','leftElbow'], ['leftElbow','leftWrist'],
+  ['rightShoulder','rightElbow'], ['rightElbow','rightWrist'],
+  // legs
+  ['leftHip','leftKnee'], ['leftKnee','leftAnkle'],
+  ['rightHip','rightKnee'], ['rightKnee','rightAnkle'],
+  // neck-ish
+  ['leftShoulder','nose'], ['rightShoulder','nose'],
+];
+
+
+// UI / Slider mirrors (renderer-side state holders)
+let regionSliders = {}, emotionSliders = {}, trackingStarted = false;
 const regionNames = ["head", "neck", "armsHands", "chest", "abdomen", "legsFeet"];
 const emotionNames = ["anxiety", "sadness", "joy", "anger", "fear", "calm"];
 
@@ -117,44 +130,75 @@ const regionKeypoints = {
 
 const UI_WIDTH = 320, CANVAS_PADDING = 20; let K = 1;
 let regionMaxWidths = { head:60, neck:20, chest:50, armsHands:150, abdomen:80, legsFeet:100, spine:100 };
-let ws;
 
-// --- place near your other UI helpers (top-level in the display sketch) ---
-function addPrintButton() {
-  if (window.__printBtn) return; // guard: don't create twice
-  const btn = document.createElement("button");
-  btn.textContent = "Print Energy Body";
-  btn.style.cssText = [
-    "position:fixed",
-    "bottom:16px",
-    "right:16px",
-    "padding:10px 14px",
-    "font-size:14px",
-    "z-index:99999",            // make sure it sits above the canvas
-    "cursor:pointer",
-  ].join(";");
-
-  btn.addEventListener("click", onPrintClick); // <- you already defined this
-  document.body.appendChild(btn);
-  window.__printBtn = btn;
+// --- PRINT: consolidated helpers ---------------------------------------
+function captureEnergyBodyHiRes() {
+  const src = (typeof scene !== "undefined" && scene) ? scene : window._renderer || null; // p5 canvas
+  const srcCanvas = src?.elt || document.querySelector("canvas");
+  const scale = 3; // upscale
+  const w = srcCanvas.width * scale;
+  const h = srcCanvas.height * scale;
+  const off = document.createElement("canvas");
+  off.width = w; off.height = h;
+  const ctx = off.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(srcCanvas, 0, 0, w, h);
+  return off.toDataURL("image/jpeg", 0.92);
 }
 
-
-function setOrientation(next){
-  if (next==='toggle') displayOrientation = (displayOrientation==='portrait')?'landscape':'portrait';
-  else if (next==='portrait'||next==='landscape') displayOrientation = next; else return;
-  console.log('[DISPLAY] Orientation ->', displayOrientation);
+function captureOnWhiteForPrint(scale = 2) {
+  const src = (scene?.elt) || document.querySelector("canvas");
+  const off = document.createElement("canvas");
+  off.width = src.width * scale; off.height = src.height * scale;
+  const ctx = off.getContext("2d");
+  // ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, off.width, off.height);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, 0, 0, off.width, off.height);
+  return off.toDataURL("image/jpeg", 0.92);
 }
-window.setOrientation = setOrientation; window.toggleOrientation = ()=>setOrientation('toggle');
-function bindWs(ws){ ws.onmessage = (evt)=>{ let msg; try{msg=JSON.parse(evt.data)}catch(e){return}; if(msg?.type==='orientation'){ if(msg.value==='toggle') setOrientation('toggle'); else if((msg.value==='portrait'||msg.value==='landscape')&& msg.value!==displayOrientation) setOrientation(msg.value); }} }
-window.addEventListener('keydown', (ev)=>{ if ((ev.code==='KeyV') || (typeof ev.key==='string'&&ev.key.toLowerCase()==='v')) setOrientation('toggle'); });
 
+function printReceiptKiosk(dataURL, meta="") {
+  const w = window.open("", "_blank", "width=800,height=1200");
+  w.document.write(`
+  <html><head><meta charset="utf-8" />
+  <style>
+    @page { size: 4in 6in; margin: 0; }
+    html, body { height:100%; margin:0; background:#fff; }
+    body { display:flex; }
+    .frame { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+    img { width:100%; height:100%; object-fit: contain; display:block; }
+    .meta { position:absolute; bottom:0.1in; left:0; right:0; text-align:center; font-size:8pt; white-space:pre; }
+  </style>
+  </head><body>
+    <div class="frame">
+      <img src="${dataURL}" />
+      <div class="meta">Energy Bodies — ${new Date().toLocaleString()}${meta ? "\n"+meta : ""}</div>
+    </div>
+    <script>onload=()=>{print(); setTimeout(()=>close(), 400);}<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+function onPrintClick() {
+  const img = captureOnWhiteForPrint(2);
+  printReceiptKiosk(img, "MIT Info+ • Energy Bodies");
+}
+
+// function addPrintButton() {
+//   if (window.__printBtn) return;
+//   const btn = document.createElement("button");
+//   btn.textContent = "Print Energy Body";
+//   btn.style.cssText = "position:fixed;bottom:16px;right:16px;padding:10px 14px;font-size:14px;z-index:99999;cursor:pointer;";
+//   btn.addEventListener("click", onPrintClick);
+//   document.body.appendChild(btn);
+//   window.__printBtn = btn;
+// }
+
+// --- SETUP --------------------------------------------------------------
 function setup(){
   createCanvas(windowWidth, windowHeight); pixelDensity(1);
   colorMode(RGB); angleMode(RADIANS); noFill(); stroke(255); strokeWeight(2);
-
-  addPrintButton();       
-
+  // addPrintButton();       
 
   scene = createGraphics(width, height);
   patternGraphics = createGraphics(width, height);
@@ -164,7 +208,7 @@ function setup(){
 
   originOffset = createVector(width/2, height/2);
 
-  // Sliders (dummy)
+  // Renderer-side slider mirrors
   emotionNames.forEach(name=>{ let val=0; emotionSliders[name]={ value:(v)=>{ if(v!==undefined) val=v; return val; } }; });
   regionNames.forEach(name=>{ let val=0; regionSliders[name]={ value:(v)=>{ if(v!==undefined) val=v; return val; } }; });
   let spineVal=0; regionSliders["spine"]={ value:(v)=>{ if(v!==undefined) spineVal=v; return spineVal; } };
@@ -176,23 +220,38 @@ function setup(){
   // PoseNet
   poseNet = ml5.poseNet(video, { detectionType:'single' }, ()=>console.log('🧠 PoseNet model loaded'));
   let debugPoseCount = 0;
-  poseNet.on('pose', results=>{
-    if (debugPoseCount < 10 && results?.length) { console.log('[POSE/raw] count:', results.length); debugPoseCount++; }
+  poseNet.on('pose', results => {
     if (!trackingStarted) return;
-    poses = results; const pose = results[0]?.pose; if(!pose) return;
-    updatePoseFactors(pose);      // emotions & global metrics
-    updatePoseTransform(pose);    // follow offsets
-    coupleRegionsToPose(pose);    // region widths from motion/geometry
+    poses = results; 
+    const pose = results[0]?.pose; 
+    if (!pose) return;
+
+    updatePoseFactors(pose);
+    updatePoseTransform(pose);
+    coupleRegionsToPose(pose);
     updatePoseAnchor(pose);
+
+    const now = millis();
+    if (now - __lastPoseEmitAt >= POSE_EMIT_MS) {
+      __lastPoseEmitAt = now;
+      emitPoseToControl(pose);
+    }
   });
 
-  // UI buttons (one-time)
-  const btnFollow = createButton('Follow Pose'); btnFollow.position(12,60); btnFollow.mousePressed(()=> followPose = !followPose);
-  const btnAxis = createButton('Axis: both/x/y'); btnAxis.position(120,60); btnAxis.mousePressed(()=>{ followAxis = followAxis==='both' ? 'x' : followAxis==='x' ? 'y' : 'both'; console.log('[AXIS]', followAxis); });
 
-  try{ const proto = location.protocol==='https:'?'wss':'ws'; const host = window.location.hostname; ws = new WebSocket(`${proto}://${host}:8080`); ws.onopen=()=>console.log('[DISPLAY] WS connected'); bindWs(ws);}catch(e){ console.warn('[DISPLAY] WS unavailable:', e); }
+  // Orientation event from Display Receiver (if present)
+  window.addEventListener('eb:orientation', (ev) => {
+    const mode = ev.detail?.value; // 'landscape' | 'portrait'
+    if (mode && mode !== displayOrientation) {
+      displayOrientation = mode;
+      console.log('[DISPLAY] Orientation →', displayOrientation);
+    }
+  });
 
-  window.emotionSliders=emotionSliders; window.regionSliders=regionSliders; window.startTracking=startTracking; window.stopTracking=stopTracking;
+  // Expose for control receiver
+  window.applySliders = applySliders;
+  window.startTracking = startTracking;
+  window.stopTracking  = stopTracking;
 }
 
 function draw(){
@@ -277,8 +336,8 @@ function drawEmotionLayers(pg, joyAmt, sadnessAmt, angerAmt){
   if(angerAmt>0){ for(let y=0;y<height;y+=gridSpacing){ for(let x=0;x<width;x+=gridSpacing){ let alpha=angerAmt*emotionAlpha; let c=color('#FF53BC'); c.setAlpha(alpha); let a=noise(x*0.01+200,y*0.01+200)*TWO_PI*4; let dx=cos(a)*gridSpacing*2; let dy=sin(a)*gridSpacing*2; pg.noStroke(); pg.fill(c); pg.ellipse(x+dx,y+dy,gridSpacing*2,gridSpacing*2); } } }
 }
 
-function startTracking(){ if(trackingStarted) return; trackingStarted=true; console.log('[TRACKING] ON'); }
-function stopTracking(){ if(!trackingStarted) return; trackingStarted=false; poses=[]; console.log('[TRACKING] OFF'); }
+function startTracking(){ if(trackingStarted) return; trackingStarted=true; console.log('[TRACKING] ON'); if (window.EnergyBodiesDisplay) EnergyBodiesDisplay.tracking(true); }
+function stopTracking(){ if(!trackingStarted) return; trackingStarted=false; poses=[]; console.log('[TRACKING] OFF'); if (window.EnergyBodiesDisplay) EnergyBodiesDisplay.tracking(false); }
 
 // --------------------------- POSE → FACTORS ---------------------------
 function updatePoseFactors(pose){
@@ -323,9 +382,8 @@ function updatePoseFactors(pose){
   emotionSliders.anger.value(   blend(poseAnger,   emotionSliders.anger.value()) );
 }
 
-// ------------------------ REGION COUPLING (NEW) ------------------------
+// ------------------------ REGION COUPLING ------------------------------
 function regionVelocity(pose, parts){
-  // Average per-part velocity normalized by video diagonal
   const diag=Math.hypot(video?.width||640, video?.height||480)||1;
   let sum=0, n=0;
   for(const name of parts){
@@ -346,24 +404,24 @@ function coupleRegionsToPose(pose){
   const lw=get('leftWrist'), rw=get('rightWrist');
   const la=get('leftAnkle'), ra=get('rightAnkle');
 
-  // --- HEAD width from head motion
+  // HEAD
   { const v=regionVelocity(pose, regionKeypoints.head); const val=constrain(map(v, C.head.velMin, C.head.velMax, 0,5), 0,5); regionSliders.head.value( lerp(regionSliders.head.value(), val, C.head.lerp) ); }
 
-  // --- NECK width from neck motion (shoulder jitter)
+  // NECK
   { const v=regionVelocity(pose, regionKeypoints.neck); const val=constrain(map(v, C.neck.velMin, C.neck.velMax, 0,5), 0,5); regionSliders.neck.value( lerp(regionSliders.neck.value(), val, C.neck.lerp) ); }
 
-  // --- ARMS/HANDS (existing: wrist spread). Keep, but also add motion boost
+  // ARMS/HANDS: spread + motion boost
   if(lw && rw && ls && rs){
     const span=dist(ls.x,ls.y,rs.x,rs.y);
     const wristSpread = dist(lw.x,lw.y,rw.x,rw.y) / max(span,1e-6);
     const base = constrain(map(wristSpread, C.armsHands.wristSpreadMin, C.armsHands.wristSpreadMax, 0,5), 0,5);
     const v    = regionVelocity(pose, regionKeypoints.armsHands);
-    const boost= constrain(map(v, C.head.velMin, C.chest.velMax, 0,5), 0,5) * 0.5; // mild motion boost
+    const boost= constrain(map(v, C.head.velMin, C.chest.velMax, 0,5), 0,5) * 0.5;
     const armsVal = constrain(base + boost, 0, 5);
     regionSliders.armsHands.value( lerp(regionSliders.armsHands.value(), armsVal, C.armsHands.lerp) );
   }
 
-  // --- CHEST: motion + openness (reach via wrists relative to shoulders)
+  // CHEST: motion + openness
   if(ls && rs){
     const span=dist(ls.x,ls.y,rs.x,rs.y);
     let openness=0; if(lw && rw){ const lwR=dist(ls.x,ls.y,lw.x,lw.y)/span; const rwR=dist(rs.x,rs.y,rw.x,rw.y)/span; openness = (lwR+rwR)*0.5; }
@@ -374,7 +432,7 @@ function coupleRegionsToPose(pose){
     regionSliders.chest.value( lerp(regionSliders.chest.value(), chestVal, C.chest.lerp) );
   }
 
-  // --- ABDOMEN: torso compression (shoulder↔hip distance normalized) + motion
+  // ABDOMEN: compression + motion
   if(ls && rs && lh && rh){
     const span=dist(ls.x,ls.y,rs.x,rs.y);
     const scx=(ls.x+rs.x)/2, scy=(ls.y+rs.y)/2; const hcx=(lh.x+rh.x)/2, hcy=(lh.y+rh.y)/2;
@@ -386,7 +444,7 @@ function coupleRegionsToPose(pose){
     regionSliders.abdomen.value( lerp(regionSliders.abdomen.value(), abdVal, C.abdomen.lerp) );
   }
 
-  // --- LEGS/FEET: ankle spread + leg motion
+  // LEGS/FEET: ankle spread + leg motion
   if(la && ra && lh && rh){
     const hipSpan = dist(lh.x,lh.y,rh.x,rh.y);
     const stepW   = dist(la.x,la.y,ra.x,ra.y) / max(hipSpan,1e-6);
@@ -397,7 +455,7 @@ function coupleRegionsToPose(pose){
     regionSliders.legsFeet.value( lerp(regionSliders.legsFeet.value(), legsVal, C.legsFeet.lerp) );
   }
 
-  // --- SPINE sway (unchanged)
+  // SPINE sway
   if(ls && rs){
     const span=dist(ls.x,ls.y,rs.x,rs.y);
     const spineSway = ((ls.x + rs.x)*0.5 - (video?.width||640)/2)/max(span,1e-6);
@@ -421,84 +479,60 @@ function updatePoseAnchor(pose){
   const cx=(ls.x+rs.x+lh.x+rh.x)/4, cy=(ls.y+rs.y+lh.y+rh.y)/4; poseTx=lerp(poseTx,cx,0.25); poseTy=lerp(poseTy,cy,0.25); _poseSeenAt=millis();
 }
 
-
-// when the visitor taps "Print"
-// 1) Optional: upscale capture for sharper prints
-function captureEnergyBodyHiRes() {
-  const src = (typeof scene !== "undefined" && scene) ? scene : window._renderer || null; // p5 canvas
-  const srcCanvas = src?.elt || document.querySelector("canvas");
-  // Render into a higher-res buffer for better print clarity (2x scale)
-  const scale = 2;
-  const w = srcCanvas.width * scale;
-  const h = srcCanvas.height * scale;
-
-  const off = document.createElement("canvas");
-  off.width = w; off.height = h;
-  const ctx = off.getContext("2d");
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(srcCanvas, 0, 0, w, h);
-  return off.toDataURL("image/jpeg", 0.92); // JPEG prints nicely on dye-sub
+function emitPoseToControl(pose){
+  if (!window.EnergyBodiesDisplay || !pose?.keypoints?.length) return;
+  const vw = video?.width  || 640;
+  const vh = video?.height || 480;
+  const pts = pose.keypoints.map(k => [k.part, k.position.x / vw, k.position.y / vh, k.score]);
+  window.EnergyBodiesDisplay.pose({ keypoints: pts, vw, vh, t: millis() });
 }
 
-// 2) One-button flow
-function onPrintClick() {
-  const pngOrJpg = captureEnergyBodyHiRes();        // or use your original captureEnergyBody()
-  const meta = "MIT Info+ • Energy Bodies";
-  printReceiptKiosk(pngOrJpg, meta);
-}
+function drawSkeleton(){
+  const cvs = document.getElementById('skelCanvas');
+  if (!cvs || !latestPose?.keypoints) return;
 
-// Somewhere in setup() after the sketch is ready:
-function addPrintButton() {
-  const btn = document.createElement("button");
-  btn.textContent = "Print Energy Body";
-  btn.style.cssText = "position:fixed;bottom:16px;right:16px;padding:10px 14px;font-size:14px;";
-  btn.addEventListener("click", onPrintClick);
-  document.body.appendChild(btn);
-}
-// call addPrintButton() once your page loads
+  // Make the canvas match CSS size
+  const rect = cvs.getBoundingClientRect();
+  if (cvs.width  !== Math.floor(rect.width) ||
+      cvs.height !== Math.floor(rect.height)) {
+    cvs.width  = Math.floor(rect.width);
+    cvs.height = Math.floor(rect.height);
+  }
 
-// 2) One-button flow
-function onPrintClick() {
-  const img = captureOnWhiteForPrint(2);
-  printReceiptKiosk(img, "MIT Info+ • Energy Bodies");
-}
+  const ctx = cvs.getContext('2d');
+  const W = cvs.width, H = cvs.height;
 
+  ctx.clearRect(0, 0, W, H);
 
-function printReceiptKiosk(dataURL, meta="") {
-  const w = window.open("", "_blank", "width=800,height=1200");
-  w.document.write(`
-  <html><head><meta charset="utf-8" />
-  <style>
-    @page { size: 4in 6in; margin: 0; }
-    html, body { height:100%; margin:0; background:#fff; }
-    body { display:flex; }
-    .frame { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
-    img { width:100%; height:100%; object-fit: contain; display:block; }
-    .meta { position:absolute; bottom:0.1in; left:0; right:0; text-align:center; font-size:8pt; }
-  </style>
-  </head><body>
-    <div class="frame">
-      <img src="${dataURL}" />
-      <div class="meta">Energy Bodies — ${new Date().toLocaleString()}${meta ? "\\n"+meta : ""}</div>
-    </div>
-    <script>onload=()=>{print(); setTimeout(()=>close(), 400);}<\/script>
-  </body></html>`);
-  w.document.close();
-}
+  // Build a map: part -> {x,y,score} scaled to canvas
+  const pts = new Map();
+  latestPose.keypoints.forEach(([part, nx, ny, s]) => {
+    pts.set(part, { x: nx * W, y: ny * H, s });
+  });
 
-function captureOnWhiteForPrint(scale = 2) {
-  const src = (scene?.elt) || document.querySelector("canvas");
-  const off = document.createElement("canvas");
-  off.width = src.width * scale; off.height = src.height * scale;
-  const ctx = off.getContext("2d");
+  // Draw bones (edges)
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(160,190,255,0.9)';
+  ctx.beginPath();
+  EDGES.forEach(([a,b]) => {
+    const pa = pts.get(a), pb = pts.get(b);
+    if (!pa || !pb) return;
+    // (optional) skip if both confidences are very low
+    if ((pa.s ?? 0) < 0.2 && (pb.s ?? 0) < 0.2) return;
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+  });
+  ctx.stroke();
 
-  // White page for printing
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, off.width, off.height);
-
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(src, 0, 0, off.width, off.height);
-  return off.toDataURL("image/jpeg", 0.92); // or PNG if you prefer
+  // Draw joints
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  pts.forEach(p => {
+    if ((p.s ?? 0) < 0.15) return;         // hide very low confidence
+    const r = 3 + 2 * Math.max(0, Math.min(1, p.s)); // size by confidence
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI*2);
+    ctx.fill();
+  });
 }
 
 
@@ -509,4 +543,41 @@ function windowResized(){
   shapeMask = createGraphics(width, height);
   emotionGraphics = createGraphics(width, height);
   originOffset = createVector(width/2, height/2);
+}
+
+// ---------------------- CONTROL PANEL INTEGRATION ----------------------
+// 1) Apply incoming slider values from control (blended for stability)
+function applySliders(emotion = {}, region = {}){
+  const BLEND = 0.35; // 0=ignore incoming, 1=overwrite (tune as desired)
+  for (const k in emotion){ if (emotionSliders[k]){ const cur = emotionSliders[k].value(); emotionSliders[k].value( lerp(cur, Number(emotion[k])||0, BLEND) ); } }
+  for (const k in region){ if (regionSliders[k]){ const cur = regionSliders[k].value(); regionSliders[k].value( lerp(cur, Number(region[k])||0, BLEND) ); } }
+  maybeEchoState();
+}
+
+// 2) Emit pose metrics back to control at ~12 FPS
+let __lastEmitMs = 0;
+function emitPoseMetrics(){
+  const now = millis();
+  if (now - __lastEmitMs < 80) return; // ~12.5 fps throttle
+  __lastEmitMs = now;
+  if (window.EnergyBodiesDisplay){
+    EnergyBodiesDisplay.pose({
+      movementVelocity, fastVel, structure: smoothedStructure,
+      balance: smoothedBalance, postureLean: smoothedPostureLean,
+      avgY: smoothedAvgY
+    });
+  }
+}
+
+// 3) Echo current renderer slider state (optional; helps iPad mirror truth)
+let __lastEcho = 0;
+function maybeEchoState(){
+  const t = millis();
+  if (!window.EnergyBodiesDisplay) return;
+  if (t - __lastEcho < 250) return; // 4 Hz
+  __lastEcho = t;
+  const emotion = {}; const region = {};
+  for (const n of emotionNames) emotion[n] = Number(emotionSliders[n].value());
+  for (const n of [...regionNames, 'spine']) region[n] = Number(regionSliders[n]?.value()||0);
+  EnergyBodiesDisplay.echo({ emotion, region });
 }

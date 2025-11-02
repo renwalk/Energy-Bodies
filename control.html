@@ -1,160 +1,453 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Energy Bodies Control</title>
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Energy Bodies — Control Panel</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
   <style>
-    :root { color-scheme: dark; }
-    body { margin: 0; padding: 0; background: #000; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    #status { position: fixed; top: 8px; right: 12px; font-size: 12px; opacity: 0.8; }
-    .pill { padding: 2px 8px; border-radius: 999px; background: #222; display: inline-block; margin-left: 6px; }
-    canvas { display: block; }
+    :root {
+      color-scheme: dark;
+      --gap: 12px;
+      --radius: 14px;
+      --panel-bg: #0b0b0b;
+      --panel-bd: #1a1a1a;
+      --track: #2a2a2a;
+      --pill-bg: #1d1d1d;
+      --header-h: 64px;
+      --label-w: 40px;     /* was 112px */
+      --value-w: 40px;     /* you can drop to 48px if needed */
+      --thumb: 22px;       /* keep your current thumb size in sync */
+    }
+    html, body { margin: 0; padding: 0; background: #000; color: #fff; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+
+    header { position: sticky; top: 0; z-index: 10; background: linear-gradient(#000, rgba(0,0,0,0.82)); border-bottom: 1px solid #222; }
+    .header-inner{
+      height: var(--header-h);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;   /* pushes pill to the right */
+      gap: 12px;
+      padding: 8px 12px;
+    }
+    .title { font-weight: 700; letter-spacing: .4px; font-size: 16px; }
+    .hdr-right { display: flex; align-items: center; gap: 8px; }
+    .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--pill-bg); border: 1px solid #2a2a2a; }
+    .ok { background:#0b2; border-color:#184; }
+
+    .warn { background:#552; border-color:#774; }
+    .err { background:#400; border-color:#622; }
+
+    /* Responsive Grid using named areas so ordering stays consistent */
+    .wrap { display: grid; gap: var(--gap); padding: var(--gap); max-width: 1600px; margin: 0 auto; grid-auto-rows: minmax(0, auto); }
+    /* Portrait / narrow (iPad portrait ~768px): 2 columns */
+    .wrap { grid-template-columns: repeat(2, minmax(0,1fr)); grid-template-areas:
+      "intro    regions"
+      "controls regions"
+      "emotions feedback" 
+      "feedback feedback"; 
+    }
+    /* Landscape (iPad 1024px): 4 columns */
+    @media (min-width: 1000px) {
+      .wrap { grid-template-columns: repeat(4, minmax(0,1fr)); grid-template-areas:
+        "intro    regions emotions feedback"
+        "controls regions emotions feedback"; }
+    }
+    /* Wider (desktop/large tablet): 5 columns, feedback spans 2 cols */
+    @media (min-width: 1366px) {
+      .wrap { grid-template-columns: repeat(5, minmax(0,1fr)); grid-template-areas:
+        "intro    regions emotions feedback feedback"
+        "intro regions controls  feedback feedback"; }
+    }
+
+    /* Panels (scroll inside, not page) */
+    .panel { background: var(--panel-bg); border: 1px solid var(--panel-bd); border-radius: var(--radius); padding: 12px; min-height: 120px; max-height: calc(100vh - var(--header-h) - (var(--gap) * 2)); overflow: auto; -webkit-overflow-scrolling: touch; }
+    .panel h3 { margin: 0 0 10px; font-size: 15px; letter-spacing: .2px; color: #9ad; }
+    .panel p { margin: 6px 0 0; opacity:.9; }
+
+    /* Place sections into named areas */
+    #intro    { grid-area: intro; }
+    #regions  { grid-area: regions; }
+    #emotions { grid-area: emotions; }
+    #controls { grid-area: controls; }
+    #feedback { grid-area: feedback; }
+
+    /* Sliders */
+    .grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    /* Slider cards now use two rows: 
+   top = label + current value, bottom = full-width slider */
+    .row{
+      display: grid;
+      grid-template-columns: 1fr;   /* single column */
+      grid-template-rows: auto auto;/* top text + slider */
+      row-gap: 6px;                 /* space between text and slider */
+      background: #111;
+      border: 1px solid #1c1c1c;
+      padding: 8px 10px;
+      border-radius: 10px;
+    }
+
+    /* First line: label on the left, numeric value on the right */
+    .row-top{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .row label{
+      text-transform: capitalize;
+      font-size: 13px;
+      margin: 0;
+    }
+
+    .row .val{
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.9;
+      font-size: 12px;
+      min-width: 42px;  /* keeps it from jittering when values change */
+    }
+
+    /* The slider now spans the full card width */
+    .row input[type="range"]{
+      width: 100%;
+      min-width: 0;  /* Safari/iPad fix */
+      appearance: none;
+      height: 20px;
+      background: transparent;
+    }
+
+    /* keep your existing track/thumb styles */
+    input[type="range"]::-webkit-slider-runnable-track { height: 6px; background: var(--track); border-radius: 999px; }
+    input[type="range"]::-webkit-slider-thumb{
+      -webkit-appearance: none; appearance: none;
+      width: var(--thumb); height: var(--thumb);
+      margin-top: calc((6px - var(--thumb)) / 2);
+      border-radius: 50%;
+      background: #9ad; border: 2px solid #bfe;
+    }
+
+
+    input[type="range"] { width: 100%; appearance: none; height: 30px; background: transparent; }
+    input[type="range"]::-webkit-slider-runnable-track { height: 6px; background: var(--track); border-radius: 999px; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #9ad; margin-top: -8px; border: 2px solid #bfe; }
+
+    .btns { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+    button, .seg > button { background: #161616; color: #fff; border: 1px solid #2a2a2a; border-radius: 10px; padding: 9px 12px; font-size: 13px; }
+    button:hover { background:#1d1d1d; }
+    .seg { display:inline-flex; background:#121212; border:1px solid #222; border-radius:10px; overflow:hidden; margin-top: 8px; }
+    .seg > button { border: none; border-right:1px solid #222; padding: 8px 12px; }
+    .seg > button.is-active { background:#223; color:#9ad; }
+
+    /* Metrics panel splits into 2 columns at landscape */
+    .metrics { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    @media (min-width: 1000px) { .metrics { grid-template-columns: 1fr 1fr; } }
+    .metric { background:#111; border:1px solid #1c1c1c; border-radius: 10px; padding: 8px 10px; }
+    .metric h4 { margin: 0 0 6px; font-size: 12px; color:#ccc; opacity:0.9; font-weight:600; letter-spacing: .2px; }
+    .bar { height: 8px; background:#222; border-radius: 999px; overflow:hidden; }
+    .bar > i { display:block; height:100%; width:0%; background:#9ad; }
+    .mval { text-align:right; font-variant-numeric: tabular-nums; font-size:12px; opacity:.9; margin-top: 4px; }
+
+    #skeletonCard { padding: 8px; }
+    #skeletonCard h4 { margin-bottom: 8px; }
+    #skelCanvas {
+      width: 100%;
+      height: 260px;       /* tweak for portrait/landscape */
+      display: block;
+      background: #000;    /* matches exhibit look */
+      border-radius: 8px;
+      border: 1px solid #1c1c1c;
+    }
+    @media (min-width: 1000px){
+      #skelCanvas { height: 300px; }
+}
+
   </style>
 </head>
 <body>
-  <div id="status">WS: <span id="wsState" class="pill">connecting…</span> | Tracking: <span id="trkState" class="pill">OFF</span></div>
+
+  <header>
+    <div class="header-inner">
+      <div class="title">Energy Bodies — Control Panel</div>
+      <div class="hdr-right">
+        <span id="trkPill" class="pill">Tracking: OFF</span>
+      </div>
+    </div>
+  </header>
+
+
+  <main class="wrap">
+    <!-- Intro (compact) -->
+    <section id="intro" class="panel">
+      <h3>Intro</h3>
+      <p>Adjust <strong>Region</strong> and <strong>Emotion</strong> sliders; tap <strong>Start</strong>. Display renders only the Energy Body.</p>
+    </section>
+
+    <!-- Region Inputs -->
+    <section id="regions" class="panel">
+      <h3>Region Inputs</h3>
+      <div id="regionGrid" class="grid"></div>
+    </section>
+
+    <!-- Emotion Inputs -->
+    <section id="emotions" class="panel">
+      <h3>Emotion Inputs</h3>
+      <div id="emotionGrid" class="grid"></div>
+    </section>
+
+    <!-- Controls -->
+    <section id="controls" class="panel">
+      <h3>Controls</h3>
+      <div class="btns" style="margin-bottom:8px">
+        <button id="startBtn">Start</button>
+        <button id="stopBtn">Stop</button>
+        <button id="resetBtn">Reset</button>
+        <button id="printBtn">Print</button>
+      </div>
+      <div class="seg" role="group" aria-label="Orientation">
+        <button data-orient="landscape" class="is-active">Landscape</button>
+        <button data-orient="portrait">Portrait</button>
+      </div>
+    </section>
+
+    <!-- Live Feedback -->
+    <section id="feedback" class="panel">
+      <h3>Live Feedback</h3>
+      <div class="metrics" id="metrics"></div>
+      <div class="metric" id="skeletonCard">
+      <h4>Live Skeleton</h4>
+      <canvas id="skelCanvas"></canvas>
+</div>
+
+    </section>
+  </main>
 
 <script>
-// -----------------
-// Config + Globals
-// -----------------
-let socket;
-let emotionNames = ["anxiety", "sadness", "joy", "anger", "fear", "calm"];
-let regionNames = ["head", "neck", "armsHands", "chest", "abdomen", "legsFeet", "spine"];
-let sliders = {};
-let trackingStarted = false; // local UI mirror
-let sendTimer = null;        // throttle slider sends
+// =============================
+// Config & Schema
+// =============================
+const EMOTIONS = ["anxiety","sadness","joy","anger","fear","calm"]; // 0..5
+const REGIONS  = ["head","neck","armsHands","chest","abdomen","legsFeet","spine"]; // spine 0..100
+const SPINE = "spine";
+const WS_PORT = 8080;
 
-// Safe BroadcastChannel (same-origin tabs) + fallback to WS
-let ch = null;
-try { ch = new BroadcastChannel('energy-bodies-orientation'); } catch(e) { ch = null; }
+let socket = null; let retryMs = 800; let sendTimer = null;
+const wsPill  = document.getElementById('wsPill');
+const trkPill = document.getElementById('trkPill');
+const echoPill= document.getElementById('echoPill');
 
-function wsUrl(port = 8080){
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${location.hostname}:${port}`;
-}
+function setPill(el, txt, cls){ el.textContent = txt; el.className = `pill ${cls||''}`; }
+function wsUrl(port = WS_PORT){ const proto = location.protocol === 'https:' ? 'wss' : 'ws'; return `${proto}://${location.hostname}:${port}`; }
 
-function setup() {
-  createCanvas(400, windowHeight);
-  background(0);
-
-  // ---- WebSocket setup ----
-  socket = new WebSocket(wsUrl(8080));
-  const $ws = document.getElementById('wsState');
-
-  socket.onopen = () => { $ws.textContent = 'open'; };
-  socket.onclose = () => { $ws.textContent = 'closed'; };
-  socket.onerror = () => { $ws.textContent = 'error'; };
-
-  // (Optional) react to messages from the display to keep local UI in sync
+function connectWS(){
+  try { socket = new WebSocket(wsUrl()); } catch (e) { setPill(wsPill, 'WS: error', 'err'); return setTimeout(connectWS, retryMs); }
+  socket.onopen  = () => { setPill(wsPill, 'WS: open', 'ok'); retryMs = 800; };
+  socket.onclose = () => { setPill(wsPill, 'WS: closed', 'warn'); setTimeout(connectWS, Math.min(8000, retryMs *= 1.6)); };
+  socket.onerror = () => { setPill(wsPill, 'WS: error', 'err'); };
   socket.onmessage = (evt) => {
-    try {
-      const msg = JSON.parse(evt.data);
-      if (msg && msg.type === 'tracking') {
-        setTrackingState(!!msg.on);
-      }
-    } catch(e) { /* ignore */ }
+    let msg; try { msg = JSON.parse(typeof evt.data === 'string' ? evt.data : (new TextDecoder().decode(evt.data))); } catch { return; }
+    if (!msg || !msg.type) return;
+
+    if (msg.type === 'tracking') setTrackingState(!!msg.on);
+    else if (msg.type === 'pose') {
+      updateMetrics(msg);
+      if (msg.keypoints) { latestPose = msg; requestAnimationFrame(drawSkeleton); }
+    }
+    else if (msg.type === 'echo') applyEcho(msg);
   };
 
-  let y = 50;
+}
+connectWS();
 
-  // Section labels
-  sectionLabel('Emotion Sliders', y); y += 40;
-  emotionNames.forEach(name => {
-    rowLabel(name, y);
-    sliders[name] = createSlider(0, 5, 0, 0.1);
-    sliders[name].position(120, y);
-    sliders[name].input(sendValuesThrottled);
-    y += 30;
+// =============================
+// UI Build
+// =============================
+const emotionGrid = document.getElementById('emotionGrid');
+const regionGrid  = document.getElementById('regionGrid');
+const sliders = {}; // name -> input
+
+function makeRow(name, min, max, step) {
+  const row = document.createElement('div');
+  row.className = 'row';
+
+  const top = document.createElement('div');
+  top.className = 'row-top';
+
+  const label = document.createElement('label');
+  label.textContent = name;
+  label.setAttribute('for', `sl-${name}`);
+
+  const val = document.createElement('div');
+  val.className = 'val';
+  val.textContent = '0.0';
+
+  top.append(label, val);
+
+  const input = document.createElement('input');
+  input.id = `sl-${name}`;
+  input.type = 'range';
+  input.min = String(min);
+  input.max = String(max);
+  input.step = String(step);
+  input.value = '0';
+
+  input.addEventListener('input', () => {
+    val.textContent = Number(input.value).toFixed((step < 1) ? 1 : 0);
+    sendValuesThrottled();
   });
 
-  y += 20;
-  sectionLabel('Region Sliders', y); y += 40;
-  regionNames.forEach(name => {
-    rowLabel(name, y);
-    const cfg = name === 'spine' ? [0,100,0,1] : [0,5,0,0.1];
-    sliders[name] = createSlider(...cfg);
-    sliders[name].position(120, y);
-    sliders[name].input(sendValuesThrottled);
-    y += 30;
-  });
+  row.append(top, input);
 
-  y += 30;
-
-  // ---- Start / Stop buttons ----
-  const startBtn = createButton('Start Tracking');
-  startBtn.position(20, y);
-  startBtn.mousePressed(() => {
-    sendAction('start');
-    setTrackingState(true); // optimistic local state
-  });
-
-  const stopBtn = createButton('Stop Tracking');
-  stopBtn.position(150, y);
-  stopBtn.mousePressed(() => {
-    sendAction('stop');
-    setTrackingState(false); // optimistic local state
-  });
-
-  // Initial state
-  setTrackingState(false);
+  sliders[name] = input;
+  return row;
 }
 
-function windowResized(){ resizeCanvas(400, windowHeight); }
 
-function draw(){ background(0); }
+EMOTIONS.forEach(n => emotionGrid.appendChild( makeRow(n, 0, 5, 0.1) ));
+REGIONS.forEach(n => regionGrid.appendChild( n===SPINE ? makeRow(n, 0, 100, 1) : makeRow(n, 0, 5, 0.1) ));
 
-// -----------------
-// UI helpers
-// -----------------
-function sectionLabel(txt, y){
-  const d = createDiv(txt); d.position(20, y); d.style('color', '#9ad'); d.style('font-weight', '600');
-}
-function rowLabel(txt, y){
-  const d = createDiv(txt); d.position(20, y); d.style('color', '#fff');
-}
-function setTrackingState(on){
-  trackingStarted = on;
-  document.getElementById('trkState').textContent = on ? 'ON' : 'OFF';
-}
+// Buttons
+const startBtn = document.getElementById('startBtn');
+const stopBtn  = document.getElementById('stopBtn');
+const resetBtn = document.getElementById('resetBtn');
+const printBtn = document.getElementById('printBtn');
 
-// -----------------
+startBtn.addEventListener('click', () => { sendAction('start'); setTrackingState(true); });
+stopBtn .addEventListener('click', () => { sendAction('stop');  setTrackingState(false); });
+resetBtn.addEventListener('click', () => { Object.values(sliders).forEach(inp => { inp.value = 0; inp.dispatchEvent(new Event('input')); }); sendValues(); });
+printBtn.addEventListener('click', () => { safeSend({ type:'print' }); });
+
+// Orientation segmented buttons
+const seg = document.querySelectorAll('.seg > button');
+seg.forEach(btn => btn.addEventListener('click', () => {
+  seg.forEach(b => b.classList.remove('is-active'));
+  btn.classList.add('is-active');
+  sendOrientation(btn.dataset.orient);
+}));
+
+function setTrackingState(on){ setPill(trkPill, `Tracking: ${on? 'ON':'OFF'}`, on ? 'ok' : ''); }
+
+// =============================
 // Messaging
-// -----------------
-function sendValuesThrottled(){
-  if (sendTimer) return;
-  sendTimer = setTimeout(() => { sendTimer = null; sendValues(); }, 60); // ~16fps max
+// =============================
+function safeSend(obj){ if (socket && socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify(obj)); } }
+
+function collectValues(){ const emotion = {}; const region = {}; EMOTIONS.forEach(n => emotion[n] = Number(sliders[n].value)); REGIONS.forEach(n => region[n]  = Number(sliders[n].value)); return { emotion, region }; }
+function sendValues(){ safeSend({ type:'sliders', ...collectValues() }); setPill(echoPill, 'Echo: sent', ''); }
+function sendValuesThrottled(){ if (sendTimer) return; sendTimer = setTimeout(() => { sendTimer=null; sendValues(); }, 60); }
+function sendAction(action){ safeSend({ type:'action', action }); }
+function sendOrientation(value){ safeSend({ type:'orientation', value }); }
+
+// =============================
+// Live metrics (from Display)
+// =============================
+const METRIC_KEYS = [
+  ['movementVelocity', 0, 10],
+  ['fastVel', 0, 10],
+  ['structure', 0, 1],
+  ['balance', 0, 1],
+  ['postureLean', 0, 1],
+  ['avgY', 0, 480]
+];
+
+let latestPose = null;
+const EDGES = [
+  ['leftShoulder','rightShoulder'],
+  ['leftHip','rightHip'],
+  ['leftShoulder','leftHip'],
+  ['rightShoulder','rightHip'],
+  ['leftShoulder','leftElbow'], ['leftElbow','leftWrist'],
+  ['rightShoulder','rightElbow'], ['rightElbow','rightWrist'],
+  ['leftHip','leftKnee'], ['leftKnee','leftAnkle'],
+  ['rightHip','rightKnee'], ['rightKnee','rightAnkle'],
+  ['leftShoulder','nose'], ['rightShoulder','nose'],
+];
+
+
+const metricsEl = document.getElementById('metrics');
+const meters = new Map();
+
+function mkMetric(name, min, max){
+  const el = document.createElement('div'); el.className='metric';
+  const h  = document.createElement('h4'); h.textContent = name;
+  const bar= document.createElement('div'); bar.className='bar';
+  const fill=document.createElement('i'); bar.appendChild(fill);
+  const mval=document.createElement('div'); mval.className='mval'; mval.textContent='—';
+  el.append(h, bar, mval);
+  metricsEl.appendChild(el);
+  meters.set(name, { fill, mval, min, max });
 }
 
-function sendValues(){
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
-  const values = { emotion: {}, region: {} };
-  emotionNames.forEach(name => values.emotion[name] = sliders[name].value());
-  regionNames.forEach(name => values.region[name]   = sliders[name].value());
-  // Keep legacy shape but add a type field for clarity
-  socket.send(JSON.stringify({ type: 'sliders', ...values }));
+METRIC_KEYS.forEach(([k, lo, hi]) => mkMetric(k, lo, hi));
+
+function updateMetrics(obj){
+  let any=false;
+  METRIC_KEYS.forEach(([k, lo, hi]) => {
+    if (typeof obj[k] !== 'number') return;
+    any=true; const val = obj[k];
+    const m = meters.get(k);
+    const pct = Math.max(0, Math.min(1, (val - m.min) / (m.max - m.min)));
+    m.fill.style.width = `${Math.round(pct*100)}%`;
+    m.mval.textContent = String(val.toFixed(2));
+  });
+  if (any) setPill(echoPill, 'Echo: live', 'ok');
 }
 
-function sendAction(action) {
-  if (socket?.readyState === WebSocket.OPEN) {
-    const msg = JSON.stringify({ type: 'action', action });
-    console.log('[CONTROL] sent', msg);
-    socket.send(msg);
-  } else {
-    console.warn('[CONTROL] WS not open for', action);
+function drawSkeleton(){
+  const cvs = document.getElementById('skelCanvas');
+  if (!cvs || !latestPose?.keypoints) return;
+
+  // Match canvas pixels to CSS size
+  const rect = cvs.getBoundingClientRect();
+  if (cvs.width  !== Math.floor(rect.width) ||
+      cvs.height !== Math.floor(rect.height)) {
+    cvs.width  = Math.floor(rect.width);
+    cvs.height = Math.floor(rect.height);
   }
+
+  const ctx = cvs.getContext('2d');
+  const W = cvs.width, H = cvs.height;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Build part -> point map (scaled to canvas)
+  const pts = new Map();
+  latestPose.keypoints.forEach(([part, nx, ny, s]) => {
+    pts.set(part, { x: nx * W, y: ny * H, s });
+  });
+
+  // Bones
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(160,190,255,0.9)';
+  ctx.beginPath();
+  EDGES.forEach(([a,b]) => {
+    const pa = pts.get(a), pb = pts.get(b);
+    if (!pa || !pb) return;
+    if ((pa.s ?? 0) < 0.2 && (pb.s ?? 0) < 0.2) return;
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+  });
+  ctx.stroke();
+
+  // Joints
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  pts.forEach(p => {
+    if ((p.s ?? 0) < 0.15) return;
+    const r = 3 + 2 * Math.max(0, Math.min(1, p.s));
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI*2);
+    ctx.fill();
+  });
 }
 
 
-// Unified orientation sender (BroadcastChannel + WS fallback)
-function sendOrientation(value){
-  // 1) Same-origin tabs (no server needed)
-  try { if (ch) ch.postMessage(value === 'toggle' ? { type:'toggle' } : { type:'orientation', value }); } catch (e) {}
-  // 2) WebSocket fallback across devices
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(value === 'toggle' ? { type:'toggle' } : { type:'orientation', value }));
-  }
+function applyEcho(msg){
+  try {
+    if (msg.emotion) Object.entries(msg.emotion).forEach(([k,v]) => { if (sliders[k]) { sliders[k].value = v; sliders[k].dispatchEvent(new Event('input')); } });
+    if (msg.region)  Object.entries(msg.region) .forEach(([k,v]) => { if (sliders[k]) { sliders[k].value = v; sliders[k].dispatchEvent(new Event('input')); } });
+    setPill(echoPill, 'Echo: synced', 'ok');
+  } catch(e){ setPill(echoPill, 'Echo: error', 'err'); }
 }
 </script>
 </body>

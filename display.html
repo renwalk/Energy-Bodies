@@ -1,95 +1,123 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Energy Bodies — Display</title>
   <link rel="icon" href="data:,">
 
-  <!-- Load p5 and ml5 locally (blocking) -->
+  <!-- Local libs (blocking) -->
   <script src="./p5.min.js"></script>
   <script src="./ml5.min.js"></script>
-
-  <!-- Single sketch include (deferred). Make sure there is ONLY ONE of these. -->
-  <script defer src="./sketch.js"></script>
 
   <style>
     html, body { margin:0; padding:0; background:#000; overflow:hidden; }
     canvas { display:block; }
-    #hud { position:fixed; top:10px; left:12px; font:12px system-ui; color:#fff; opacity:.8; background:rgba(24,24,24,.6); padding:6px 8px; border-radius:8px; }
-    .pill{ padding:2px 8px; border-radius:999px; background:#222; margin-left:6px; }
+    /* Orientation helper (if you want to react in CSS; JS event is also dispatched) */
+    .portrait body, body.portrait { transform-origin: center center; }
   </style>
 </head>
 <body>
-<div id="hud">WS:<span id="ws" class="pill">-</span> ML5:<span id="ml5s" class="pill">-</span> Track:<span id="trk" class="pill">OFF</span></div>
 
 <script>
-let socket;
-const HUD = { ws:document.getElementById('ws'), ml5s:document.getElementById('ml5s'), trk:document.getElementById('trk'), set(k,v){ this[k].textContent=v; } };
-
-window.addEventListener('load', () => {
-  console.log('✅ display.html loaded, starting WebSocket...');
-
-  // Secure-context hint (camera needs HTTPS or localhost)
-  const secureOK = location.protocol==='https:' || ['localhost','127.0.0.1'].includes(location.hostname);
-  if (!secureOK) console.warn('⚠️ Use HTTPS or localhost for camera access.');
-
-  // Reflect ml5 presence in HUD
-  HUD.set('ml5s', window.ml5 ? 'ready' : 'missing');
-
-  // Build WS URL that auto-switches to wss on https
-  function wsUrl(port=8080){
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    return `${proto}://${location.hostname}:${port}`;
-  }
-
-  socket = new WebSocket(wsUrl(8080));
-  socket.onopen  = () => HUD.set('ws','open');
-  socket.onclose = () => HUD.set('ws','closed');
-  socket.onerror = () => HUD.set('ws','error');
-
-  socket.onmessage = (event) => {
-    if (event.data instanceof Blob) {
-      const r = new FileReader();
-      r.onload = () => handleIncomingMessage(r.result);
-      r.readAsText(event.data);
-    } else {
-      handleIncomingMessage(String(event.data));
+// =====================================================
+// Energy Bodies — Display Receiver (no HUD)
+// Bridges WS messages from Control → sketch.js and lets
+// sketch.js emit back (pose/tracking/echo). No DOM UI.
+// =====================================================
+(function(){
+  // Exposed helpers your sketch.js can call
+  const Emitter = {
+    socket: null,
+    pose(obj){ safeSend({ type:'pose', ...obj }); },
+    tracking(on){ safeSend({ type:'tracking', on: !!on }); },
+    echo(state){
+      const payload = { type:'echo' };
+      if (state?.emotion) payload.emotion = state.emotion;
+      if (state?.region)  payload.region  = state.region;
+      safeSend(payload);
     }
   };
+  window.EnergyBodiesDisplay = Emitter;
 
-  function handleIncomingMessage(text) {
-    let payload;
-    try { payload = JSON.parse(text); } catch { console.warn('[DISPLAY] bad JSON:', text); return; }
+  // Orientation handling → dispatch event for sketch.js
+  function applyOrientation(value){
+    const cls = value === 'portrait' ? 'portrait' : 'landscape';
+    document.body.classList.toggle('portrait', cls === 'portrait');
+    window.dispatchEvent(new CustomEvent('eb:orientation', { detail:{ value:cls } }));
+  }
 
-    // Optional: mirror sliders sent from control
-    if (payload.emotion && window.emotionSliders) {
-      for (const n in payload.emotion) {
-        window.emotionSliders[n]?.value?.(payload.emotion[n]);
-      }
-    }
-    if (payload.region && window.regionSliders) {
-      for (const n in payload.region) {
-        window.regionSliders[n]?.value?.(payload.region[n]);
-      }
-    }
+  // WebSocket with auto-retry
+  let socket; let retry = 800; const MAX = 8000;
+  function wsUrl(port=8080){
+    const proto = location.protocol==='https:' ? 'wss' : 'ws';
+    return `${proto}://${location.hostname}:${port}`;
+  }
+  function connect(){
+    try { socket = new WebSocket(wsUrl(8080)); } catch (e) { return setTimeout(connect, retry); }
+    Emitter.socket = socket;
 
-    // Start/Stop actions
-    if (payload.type === 'action' || payload.action === 'start') {
-      const action = payload.action;
-      if (action === 'start' && typeof window.startTracking === 'function') {
-        console.log('[DISPLAY] action:start');
-        window.startTracking();
-        HUD.set('trk','ON');
-      }
-      if (action === 'stop' && typeof window.stopTracking === 'function') {
-        console.log('[DISPLAY] action:stop');
-        window.stopTracking();
-        HUD.set('trk','OFF');
-      }
+    socket.onopen  = () => { retry = 800; };
+    socket.onclose = () => { setTimeout(connect, Math.min(MAX, (retry *= 1.6))); };
+    socket.onerror = () => {};
+    socket.onmessage = (event) => {
+      const handle = (txt)=>{ let msg; try{ msg = JSON.parse(txt);}catch{ return; } route(msg); };
+      if (event.data instanceof Blob){ const r=new FileReader(); r.onload=()=>handle(r.result); r.readAsText(event.data); }
+      else handle(String(event.data));
+    };
+  }
+  connect();
+
+  function safeSend(obj){
+    if (Emitter.socket && Emitter.socket.readyState === WebSocket.OPEN) {
+      try { Emitter.socket.send(JSON.stringify(obj)); } catch {}
     }
   }
-});
+
+  // Route control messages → sketch.js
+  function route(payload){
+    const { type } = payload || {};
+    if (!type) return;
+
+    if (type === 'sliders'){
+      if (typeof window.applySliders === 'function') {
+        window.applySliders(payload.emotion||{}, payload.region||{});
+      }
+      return;
+    }
+
+    if (type === 'action'){
+      if (payload.action === 'start' && typeof window.startTracking === 'function'){
+        window.startTracking();
+        Emitter.tracking(true);
+      }
+      if (payload.action === 'stop' && typeof window.stopTracking === 'function'){
+        window.stopTracking();
+        Emitter.tracking(false);
+      }
+      return;
+    }
+
+    if (type === 'orientation'){
+      applyOrientation(payload.value);
+      return;
+    }
+
+    if (type === 'print'){
+      // Trigger the renderer’s print routine (no on-screen button)
+      if (typeof window.onPrintClick === 'function') {
+        window.onPrintClick();
+      }
+      return;
+    }
+  }
+
+  // Announce initial state (optional)
+  Emitter.tracking(false);
+})();
 </script>
+
+<!-- Your renderer LAST so it can see EnergyBodiesDisplay -->
+<script defer src="./sketch.js"></script>
 </body>
 </html>
