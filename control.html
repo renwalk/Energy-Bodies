@@ -224,6 +224,7 @@
   </main>
 
 <script>
+
 // =============================
 // Config & Schema
 // =============================
@@ -315,7 +316,21 @@ const printBtn = document.getElementById('printBtn');
 
 startBtn.addEventListener('click', () => { sendAction('start'); setTrackingState(true); });
 stopBtn .addEventListener('click', () => { sendAction('stop');  setTrackingState(false); });
-resetBtn.addEventListener('click', () => { Object.values(sliders).forEach(inp => { inp.value = 0; inp.dispatchEvent(new Event('input')); }); sendValues(); });
+resetBtn.addEventListener('click', () => {
+  // zero all sliders locally without re-sending values
+  Object.entries(sliders).forEach(([name, inp]) => {
+    inp.value = 0;
+    const vEl = inp.parentElement.querySelector('.val');
+    if (vEl) vEl.textContent = (name === 'spine') ? '0' : '0.0';
+  });
+
+  setTrackingState(false);  // updates pill
+  clearFeedback();          // ← clear meters + skeleton immediately
+  sendAction('reset');      // display runs resetAll() and echoes zeros
+  // (no sendValues() here)
+});
+
+
 printBtn.addEventListener('click', () => { safeSend({ type:'print' }); });
 
 // Orientation segmented buttons
@@ -326,7 +341,10 @@ seg.forEach(btn => btn.addEventListener('click', () => {
   sendOrientation(btn.dataset.orient);
 }));
 
-function setTrackingState(on){ setPill(trkPill, `Tracking: ${on? 'ON':'OFF'}`, on ? 'ok' : ''); }
+function setTrackingState(on){
+  setPill(trkPill, `Tracking: ${on? 'ON':'OFF'}`, on ? 'ok' : '');
+  if (!on) clearFeedback();   // ← add this line
+}
 
 // =============================
 // Messaging
@@ -439,6 +457,23 @@ function drawSkeleton(){
     ctx.arc(p.x, p.y, r, 0, Math.PI*2);
     ctx.fill();
   });
+}
+
+function clearFeedback(){
+  // reset metric bars/text
+  meters.forEach(m => {
+    m.fill.style.width = '0%';
+    m.mval.textContent = '—';
+  });
+
+  // clear skeleton canvas
+  latestPose = null;
+  const cvs = document.getElementById('skelCanvas');
+  if (cvs) {
+    // willReadFrequently helps performance warnings
+    const ctx = cvs.getContext('2d', { willReadFrequently: true });
+    if (ctx) ctx.clearRect(0, 0, cvs.width, cvs.height);
+  }
 }
 
 

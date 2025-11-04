@@ -59,7 +59,7 @@ const TUNE = {
       curlMax: 50,
       alphaMin: 50, alphaMax: 255,
       minSpacingPx: 14,
-      maxStrokes: 6000
+      maxStrokes: 9000
     },
     marbles: { gridSpacing: 18, alphaPerUnit: 70 }
   }
@@ -131,7 +131,7 @@ const regionKeypoints = {
 const UI_WIDTH = 320, CANVAS_PADDING = 20; let K = 1;
 let regionMaxWidths = { head:60, neck:20, chest:50, armsHands:150, abdomen:80, legsFeet:100, spine:100 };
 
-// --- PRINT: consolidated helpers ---------------------------------------
+// --- PRINT: consolidated helpers ---------------------------------------ƒ
 function captureEnergyBodyHiRes() {
   const src = (typeof scene !== "undefined" && scene) ? scene : window._renderer || null; // p5 canvas
   const srcCanvas = src?.elt || document.querySelector("canvas");
@@ -220,6 +220,7 @@ function setup(){
   // PoseNet
   poseNet = ml5.poseNet(video, { detectionType:'single' }, ()=>console.log('🧠 PoseNet model loaded'));
   let debugPoseCount = 0;
+  
   poseNet.on('pose', results => {
     if (!trackingStarted) return;
     poses = results; 
@@ -231,12 +232,17 @@ function setup(){
     coupleRegionsToPose(pose);
     updatePoseAnchor(pose);
 
+    maybeEchoState();
+    emitPoseMetrics();   // send meters to the control (~12 fps throttled)
+
+
     const now = millis();
     if (now - __lastPoseEmitAt >= POSE_EMIT_MS) {
       __lastPoseEmitAt = now;
       emitPoseToControl(pose);
     }
   });
+  
 
 
   // Orientation event from Display Receiver (if present)
@@ -252,6 +258,8 @@ function setup(){
   window.applySliders = applySliders;
   window.startTracking = startTracking;
   window.stopTracking  = stopTracking;
+  window.resetAll = resetAll;
+  window.addEventListener('eb:reset', () => resetAll());
 }
 
 function draw(){
@@ -321,13 +329,77 @@ function drawBodyShape(regionSpacings, fearScale){
 }
 
 function drawAnxietyPattern(pg, val, calm){
-  pg.clear(); const A=TUNE.visuals.anxiety; let alpha=lerp(A.alphaMax,A.alphaMin,calm);
-  pg.stroke(255,alpha); pg.strokeWeight(2*K); pg.noFill(); let smoothness=calm;
-  let baseSpacing = lerp( map(val,0,5,A.spacingChaotic.from,A.spacingChaotic.to), map(val,0,5,A.spacingCalm.from,A.spacingCalm.to), smoothness )*K; baseSpacing=max(baseSpacing,A.minSpacingPx);
-  let lineLength = lerp( map(val,0,5,A.lineLenChaotic.from,A.lineLenChaotic.to),  map(val,0,5,A.lineLenCalm.from,A.lineLenCalm.to), smoothness )*K;
-  let jitterAmount = lerp(map(val,0,5,0,A.jitterMax),0,smoothness)*K; let irregularity=lerp(map(val,0,5,0,A.irregularityMax),0,smoothness); let angleScale=lerp(A.angleScaleChaotic,A.angleScaleCalm,smoothness); let curlStrength=lerp(0,A.curlMax,calm)*K;
-  let strokes=0; for(let y=0;y<height;y+=baseSpacing){ for(let x=0;x<width;x+=baseSpacing){ if(strokes++>A.maxStrokes) return; let ox=x+random(-baseSpacing*irregularity,baseSpacing*irregularity); let oy=y+random(-baseSpacing*irregularity,baseSpacing*irregularity); let jx=(noise(ox*0.01,oy*0.01,frameCount*0.01)-0.5)*jitterAmount; let jy=(noise(oy*0.01,ox*0.01,frameCount*0.01)-0.5)*jitterAmount; let ang=noise(ox*angleScale,oy*angleScale,frameCount*0.005)*TWO_PI; let dx=cos(ang)*lineLength; let dy=sin(ang)*lineLength; let sx=ox+jx, sy=oy+jy, ex=ox+dx+jx, ey=oy+dy+jy; let mx=ox+dx*0.5+sin(frameCount*0.02+y*0.01)*curlStrength; let my=oy+dy*0.5+cos(frameCount*0.02+x*0.01)*curlStrength; pg.beginShape(); pg.vertex(sx,sy); pg.quadraticVertex(mx+jx,my+jy,ex,ey); pg.endShape(); } }
+  pg.clear();
+  const A = TUNE.visuals.anxiety;
+
+  // Alpha & base params
+  const alpha = lerp(A.alphaMax, A.alphaMin, calm);
+  pg.stroke(255, alpha);
+  pg.strokeWeight(2 * K);
+  pg.noFill();
+
+  // Interpolated spacing/length based on anxiety & calm
+  let baseSpacing = lerp(
+    map(val, 0, 5, A.spacingChaotic.from, A.spacingChaotic.to),
+    map(val, 0, 5, A.spacingCalm.from, A.spacingCalm.to),
+    calm
+  ) * K;
+  baseSpacing = max(baseSpacing, A.minSpacingPx);
+
+  const lineLength = lerp(
+    map(val, 0, 5, A.lineLenChaotic.from, A.lineLenChaotic.to),
+    map(val, 0, 5, A.lineLenCalm.from,   A.lineLenCalm.to),
+    calm
+  ) * K;
+
+  const jitterAmount  = lerp(map(val,0,5,0,A.jitterMax), 0, calm) * K;
+  const irregularity  = lerp(map(val,0,5,0,A.irregularityMax), 0, calm);
+  const angleScale    = lerp(A.angleScaleChaotic, A.angleScaleCalm, calm);
+  const curlStrength  = lerp(0, A.curlMax, calm) * K;
+
+  // --- Budgeted, even sampling across the FULL canvas ---
+  const cols = Math.ceil(width  / baseSpacing);
+  const rows = Math.ceil(height / baseSpacing);
+  const totalCells = cols * rows;
+
+  // Keep existing cap for perf, but distribute across the whole grid
+  const budget = Math.min(totalCells, A.maxStrokes || totalCells);
+
+  // Use a 2D stride so we sample evenly in X and Y
+  const stride = Math.max(1, Math.ceil(Math.sqrt(totalCells / budget)));
+
+  for (let yi = 0; yi < rows; yi += stride){
+    const y = yi * baseSpacing;
+    for (let xi = 0; xi < cols; xi += stride){
+      const x = xi * baseSpacing;
+
+      // Jittered cell origin
+      const ox = x + random(-baseSpacing * irregularity, baseSpacing * irregularity);
+      const oy = y + random(-baseSpacing * irregularity, baseSpacing * irregularity);
+
+      // Per-stroke jitter
+      const jx = (noise(ox*0.01, oy*0.01, frameCount*0.01) - 0.5) * jitterAmount;
+      const jy = (noise(oy*0.01, ox*0.01, frameCount*0.01) - 0.5) * jitterAmount;
+
+      const ang = noise(ox * angleScale, oy * angleScale, frameCount * 0.005) * TWO_PI;
+      const dx  = Math.cos(ang) * lineLength;
+      const dy  = Math.sin(ang) * lineLength;
+
+      const sx = ox + jx, sy = oy + jy;
+      const ex = ox + dx + jx, ey = oy + dy + jy;
+
+      // Curved middle for a touch of “curl”
+      const mx = ox + dx * 0.5 + Math.sin(frameCount * 0.02 + y * 0.01) * curlStrength;
+      const my = oy + dy * 0.5 + Math.cos(frameCount * 0.02 + x * 0.01) * curlStrength;
+
+      pg.beginShape();
+      pg.vertex(sx, sy);
+      pg.quadraticVertex(mx + jx, my + jy, ex, ey);
+      pg.endShape();
+    }
+  }
 }
+
 
 function drawEmotionLayers(pg, joyAmt, sadnessAmt, angerAmt){
   pg.clear(); const M=TUNE.visuals.marbles; let gridSpacing=M.gridSpacing, emotionAlpha=M.alphaPerUnit;
@@ -553,6 +625,113 @@ function applySliders(emotion = {}, region = {}){
   for (const k in region){ if (regionSliders[k]){ const cur = regionSliders[k].value(); regionSliders[k].value( lerp(cur, Number(region[k])||0, BLEND) ); } }
   maybeEchoState();
 }
+
+// 🔧 DROP-IN PATCH — ensures Reset zeroes ALL sliders, stops PoseNet tracking,
+// blocks incoming slider updates briefly, and echoes zeros to the iPad UI.
+// 
+// HOW TO INSTALL
+// 1) Paste this whole block into sketch.js (near your CONTROL PANEL INTEGRATION).
+// 2) In setup(), add:    window.resetAll = resetAll;
+// 3) Wire your button to call:    window.resetAll();    (or dispatch event 'eb:reset')
+//
+// Optional: If you want to also pause the camera stream on reset, set PAUSE_CAMERA_ON_RESET=true.
+
+// --- CONFIG -----------------------------------------------------------------
+const PAUSE_CAMERA_ON_RESET = false;   // set true to pause webcam on reset
+const RESET_INPUT_BLOCK_MS   = 600;    // ignore incoming slider updates for this many ms
+
+// --- INTERNAL STATE ----------------------------------------------------------
+let __blockIncomingUntil = 0;          // millis() until which applySliders ignores input
+
+// ❶ Replace your applySliders() with this version (or add the guard lines at top)
+function applySliders(emotion = {}, region = {}, opts = {}){
+  // Guard: briefly ignore incoming control updates after a reset
+  const now = millis ? millis() : 0;
+  if (!opts.force && now < __blockIncomingUntil) return;
+
+  const BLEND = 0.35; // 0=ignore incoming, 1=overwrite (tune as desired)
+  for (const k in emotion){
+    if (emotionSliders[k]){
+      const cur = emotionSliders[k].value();
+      emotionSliders[k].value( lerp(cur, Number(emotion[k])||0, BLEND) );
+    }
+  }
+  for (const k in region){
+    if (regionSliders[k]){
+      const cur = regionSliders[k].value();
+      regionSliders[k].value( lerp(cur, Number(region[k])||0, BLEND) );
+    }
+  }
+  maybeEchoState();
+}
+
+// ❷ Add this resetAll() function
+function resetAll({ echo = true, resetPoseCaches = true, stopTrackingNow = true } = {}) {
+  // A) Stop PoseNet tracking (and optionally pause camera)
+  if (stopTrackingNow) {
+    try { if (typeof stopTracking === 'function') stopTracking(); } catch(err) { console.warn(err); }
+    if (window.EnergyBodiesDisplay && typeof EnergyBodiesDisplay.tracking === 'function') {
+      try { EnergyBodiesDisplay.tracking(false); } catch(err) { console.warn(err); }
+    }
+    if (PAUSE_CAMERA_ON_RESET && video?.elt && typeof video.elt.pause === 'function') {
+      try { video.elt.pause(); } catch(err) { console.warn(err); }
+    }
+  }
+
+  // B) Zero all emotion & region sliders (renderer-side state)
+  for (const n of emotionNames) {
+    if (emotionSliders[n]) emotionSliders[n].value(0);
+  }
+  for (const n of [...regionNames, 'spine']) {
+    if (regionSliders[n]) regionSliders[n].value(0);
+  }
+
+  // C) Zero derived pose metrics so visuals immediately calm
+  movementVelocity = 0;
+  fastVel = 0;
+  slowVel = 0;
+  smoothedStructure = 0;
+  smoothedBalance = 0;
+  smoothedPostureLean = 0;
+  smoothedAvgY = 0;
+
+  // D) Reset pose-follow transform and flags
+  followPose = false;
+  followAxis = 'both';
+  poseRot = 0;
+  poseSc  = 1;
+  const vw = video?.width || 640;
+  const vh = video?.height || 480;
+  poseTx = vw / 2;
+  poseTy = vh / 2;
+  _poseSeenAt = millis ? millis() : 0;
+
+  // E) Clear motion caches so next frame re-seeds velocity deltas
+  if (resetPoseCaches) {
+    __prevKeypoints = null;
+    if (__prevByPart?.clear) __prevByPart.clear();
+    latestPose = null;
+    poses = [];
+  }
+
+  // F) Clear offscreen layers immediately
+  scene?.clear?.();
+  patternGraphics?.clear?.();
+  emotionGraphics?.clear?.();
+  shapeMask?.clear?.();
+
+  // G) Block incoming slider updates briefly so the zeros "stick"
+  __blockIncomingUntil = (millis ? millis() : 0) + RESET_INPUT_BLOCK_MS;
+
+  // H) Echo zeros so the iPad mirrors renderer truth
+  if (echo && typeof maybeEchoState === 'function') {
+    maybeEchoState();
+  }
+
+  console.log('[RESET] full zero + tracking stopped');
+}
+
+
 
 // 2) Emit pose metrics back to control at ~12 FPS
 let __lastEmitMs = 0;

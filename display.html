@@ -5,15 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Energy Bodies — Display</title>
   <link rel="icon" href="data:,">
-
   <!-- Local libs (blocking) -->
   <script src="./p5.min.js"></script>
   <script src="./ml5.min.js"></script>
-
   <style>
     html, body { margin:0; padding:0; background:#000; overflow:hidden; }
     canvas { display:block; }
-    /* Orientation helper (if you want to react in CSS; JS event is also dispatched) */
     .portrait body, body.portrait { transform-origin: center center; }
   </style>
 </head>
@@ -90,12 +87,24 @@
       if (payload.action === 'start' && typeof window.startTracking === 'function'){
         window.startTracking();
         Emitter.tracking(true);
+        return;
       }
       if (payload.action === 'stop' && typeof window.stopTracking === 'function'){
         window.stopTracking();
         Emitter.tracking(false);
+        return;
       }
-      return;
+      if (payload.action === 'reset'){
+        console.log('[DISPLAY] action: reset');
+        if (typeof window.resetAll === 'function') {
+          window.resetAll();                          // full zero + stop tracking
+        } else {
+          console.warn('[DISPLAY] resetAll not found, dispatching eb:reset');
+          window.dispatchEvent(new CustomEvent('eb:reset'));
+        }
+        Emitter.tracking(false);
+        return;
+      }
     }
 
     if (type === 'orientation'){
@@ -104,7 +113,6 @@
     }
 
     if (type === 'print'){
-      // Trigger the renderer’s print routine (no on-screen button)
       if (typeof window.onPrintClick === 'function') {
         window.onPrintClick();
       }
