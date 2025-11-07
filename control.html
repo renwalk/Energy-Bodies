@@ -15,9 +15,9 @@
       --track: #2a2a2a;
       --pill-bg: #1d1d1d;
       --header-h: 64px;
-      --label-w: 40px;     /* was 112px */
-      --value-w: 40px;     /* you can drop to 48px if needed */
-      --thumb: 22px;       /* keep your current thumb size in sync */
+      --label-w: 40px;
+      --value-w: 40px;
+      --thumb: 22px;
     }
     html, body { margin: 0; padding: 0; background: #000; color: #fff; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
 
@@ -26,7 +26,7 @@
       height: var(--header-h);
       display: flex;
       align-items: center;
-      justify-content: space-between;   /* pushes pill to the right */
+      justify-content: space-between;
       gap: 12px;
       padding: 8px 12px;
     }
@@ -34,91 +34,53 @@
     .hdr-right { display: flex; align-items: center; gap: 8px; }
     .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--pill-bg); border: 1px solid #2a2a2a; }
     .ok { background:#0b2; border-color:#184; }
-
     .warn { background:#552; border-color:#774; }
     .err { background:#400; border-color:#622; }
 
-    /* Responsive Grid using named areas so ordering stays consistent */
     .wrap { display: grid; gap: var(--gap); padding: var(--gap); max-width: 1600px; margin: 0 auto; grid-auto-rows: minmax(0, auto); }
-    /* Portrait / narrow (iPad portrait ~768px): 2 columns */
     .wrap { grid-template-columns: repeat(2, minmax(0,1fr)); grid-template-areas:
       "intro    regions"
       "controls regions"
       "emotions feedback" 
-      "feedback feedback"; 
+      "feedback feedback";
     }
-    /* Landscape (iPad 1024px): 4 columns */
     @media (min-width: 1000px) {
       .wrap { grid-template-columns: repeat(4, minmax(0,1fr)); grid-template-areas:
         "intro    regions emotions feedback"
         "controls regions emotions feedback"; }
     }
-    /* Wider (desktop/large tablet): 5 columns, feedback spans 2 cols */
     @media (min-width: 1366px) {
       .wrap { grid-template-columns: repeat(5, minmax(0,1fr)); grid-template-areas:
         "intro    regions emotions feedback feedback"
         "intro regions controls  feedback feedback"; }
     }
 
-    /* Panels (scroll inside, not page) */
     .panel { background: var(--panel-bg); border: 1px solid var(--panel-bd); border-radius: var(--radius); padding: 12px; min-height: 120px; max-height: calc(100vh - var(--header-h) - (var(--gap) * 2)); overflow: auto; -webkit-overflow-scrolling: touch; }
     .panel h3 { margin: 0 0 10px; font-size: 15px; letter-spacing: .2px; color: #9ad; }
     .panel p { margin: 6px 0 0; opacity:.9; }
 
-    /* Place sections into named areas */
     #intro    { grid-area: intro; }
     #regions  { grid-area: regions; }
     #emotions { grid-area: emotions; }
     #controls { grid-area: controls; }
     #feedback { grid-area: feedback; }
 
-    /* Sliders */
     .grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
-    /* Slider cards now use two rows: 
-   top = label + current value, bottom = full-width slider */
     .row{
       display: grid;
-      grid-template-columns: 1fr;   /* single column */
-      grid-template-rows: auto auto;/* top text + slider */
-      row-gap: 6px;                 /* space between text and slider */
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto;
+      row-gap: 6px;
       background: #111;
       border: 1px solid #1c1c1c;
       padding: 8px 10px;
       border-radius: 10px;
     }
+    .row-top{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .row label{ text-transform: capitalize; font-size: 13px; margin: 0; }
+    .row .val{ text-align: right; font-variant-numeric: tabular-nums; opacity: 0.9; font-size: 12px; min-width: 42px; }
+    .row input[type="range"]{ width: 100%; min-width: 0; appearance: none; height: 20px; background: transparent; }
 
-    /* First line: label on the left, numeric value on the right */
-    .row-top{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .row label{
-      text-transform: capitalize;
-      font-size: 13px;
-      margin: 0;
-    }
-
-    .row .val{
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-      opacity: 0.9;
-      font-size: 12px;
-      min-width: 42px;  /* keeps it from jittering when values change */
-    }
-
-    /* The slider now spans the full card width */
-    .row input[type="range"]{
-      width: 100%;
-      min-width: 0;  /* Safari/iPad fix */
-      appearance: none;
-      height: 20px;
-      background: transparent;
-    }
-
-    /* keep your existing track/thumb styles */
     input[type="range"]::-webkit-slider-runnable-track { height: 6px; background: var(--track); border-radius: 999px; }
     input[type="range"]::-webkit-slider-thumb{
       -webkit-appearance: none; appearance: none;
@@ -127,11 +89,8 @@
       border-radius: 50%;
       background: #9ad; border: 2px solid #bfe;
     }
-
-
     input[type="range"] { width: 100%; appearance: none; height: 30px; background: transparent; }
-    input[type="range"]::-webkit-slider-runnable-track { height: 6px; background: var(--track); border-radius: 999px; }
-    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #9ad; margin-top: -8px; border: 2px solid #bfe; }
+    input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; border-radius: 50%; background: #9ad; margin-top: -8px; border: 2px solid #bfe; }
 
     .btns { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
     button, .seg > button { background: #161616; color: #fff; border: 1px solid #2a2a2a; border-radius: 10px; padding: 9px 12px; font-size: 13px; }
@@ -140,7 +99,6 @@
     .seg > button { border: none; border-right:1px solid #222; padding: 8px 12px; }
     .seg > button.is-active { background:#223; color:#9ad; }
 
-    /* Metrics panel splits into 2 columns at landscape */
     .metrics { display: grid; grid-template-columns: 1fr; gap: 8px; }
     @media (min-width: 1000px) { .metrics { grid-template-columns: 1fr 1fr; } }
     .metric { background:#111; border:1px solid #1c1c1c; border-radius: 10px; padding: 8px 10px; }
@@ -153,16 +111,13 @@
     #skeletonCard h4 { margin-bottom: 8px; }
     #skelCanvas {
       width: 100%;
-      height: 260px;       /* tweak for portrait/landscape */
+      height: 260px;
       display: block;
-      background: #000;    /* matches exhibit look */
+      background: #000;
       border-radius: 8px;
       border: 1px solid #1c1c1c;
     }
-    @media (min-width: 1000px){
-      #skelCanvas { height: 300px; }
-}
-
+    @media (min-width: 1000px){ #skelCanvas { height: 300px; } }
   </style>
 </head>
 <body>
@@ -171,39 +126,41 @@
     <div class="header-inner">
       <div class="title">Energy Bodies — Control Panel</div>
       <div class="hdr-right">
+        <span id="wsPill" class="pill">WS: …</span>
+        <span id="echoPill" class="pill">Echo: —</span>
         <span id="trkPill" class="pill">Tracking: OFF</span>
+        
       </div>
     </div>
   </header>
 
-
   <main class="wrap">
-    <!-- Intro (compact) -->
     <section id="intro" class="panel">
       <h3>Intro</h3>
-      <p>Adjust <strong>Region</strong> and <strong>Emotion</strong> sliders; tap <strong>Start</strong>. Display renders only the Energy Body.</p>
+      <p>Adjust body and emotion scales to reflect your state.
+
+Press <strong>Start</strong> and move—the system mirrors your gestures in color and motion.
+
+Press <strong>Print</strong> to receive your <strong>Energy Body</strong> , a visualization of emotion as energy in motion.</p>
     </section>
 
-    <!-- Region Inputs -->
     <section id="regions" class="panel">
       <h3>Region Inputs</h3>
       <div id="regionGrid" class="grid"></div>
     </section>
 
-    <!-- Emotion Inputs -->
     <section id="emotions" class="panel">
       <h3>Emotion Inputs</h3>
       <div id="emotionGrid" class="grid"></div>
     </section>
 
-    <!-- Controls -->
     <section id="controls" class="panel">
       <h3>Controls</h3>
       <div class="btns" style="margin-bottom:8px">
         <button id="startBtn">Start</button>
         <button id="stopBtn">Stop</button>
         <button id="resetBtn">Reset</button>
-        <button id="printBtn">Print</button>
+        <button id="printBtn" disabled>Print</button>
       </div>
       <div class="seg" role="group" aria-label="Orientation">
         <button data-orient="landscape" class="is-active">Landscape</button>
@@ -211,20 +168,17 @@
       </div>
     </section>
 
-    <!-- Live Feedback -->
     <section id="feedback" class="panel">
       <h3>Live Feedback</h3>
       <div class="metrics" id="metrics"></div>
       <div class="metric" id="skeletonCard">
-      <h4>Live Skeleton</h4>
-      <canvas id="skelCanvas"></canvas>
-</div>
-
+        <h4>Live Skeleton</h4>
+        <canvas id="skelCanvas"></canvas>
+      </div>
     </section>
   </main>
 
 <script>
-
 // =============================
 // Config & Schema
 // =============================
@@ -238,7 +192,7 @@ const wsPill  = document.getElementById('wsPill');
 const trkPill = document.getElementById('trkPill');
 const echoPill= document.getElementById('echoPill');
 
-function setPill(el, txt, cls){ el.textContent = txt; el.className = `pill ${cls||''}`; }
+function setPill(el, txt, cls){ if(!el) return; el.textContent = txt; el.className = `pill ${cls||''}`; }
 function wsUrl(port = WS_PORT){ const proto = location.protocol === 'https:' ? 'wss' : 'ws'; return `${proto}://${location.hostname}:${port}`; }
 
 function connectWS(){
@@ -257,7 +211,6 @@ function connectWS(){
     }
     else if (msg.type === 'echo') applyEcho(msg);
   };
-
 }
 connectWS();
 
@@ -299,11 +252,9 @@ function makeRow(name, min, max, step) {
   });
 
   row.append(top, input);
-
   sliders[name] = input;
   return row;
 }
-
 
 EMOTIONS.forEach(n => emotionGrid.appendChild( makeRow(n, 0, 5, 0.1) ));
 REGIONS.forEach(n => regionGrid.appendChild( n===SPINE ? makeRow(n, 0, 100, 1) : makeRow(n, 0, 5, 0.1) ));
@@ -314,8 +265,14 @@ const stopBtn  = document.getElementById('stopBtn');
 const resetBtn = document.getElementById('resetBtn');
 const printBtn = document.getElementById('printBtn');
 
-startBtn.addEventListener('click', () => { sendAction('start'); setTrackingState(true); });
-stopBtn .addEventListener('click', () => { sendAction('stop');  setTrackingState(false); });
+startBtn.addEventListener('click', () => {
+  sendAction('start');                       // tracking ON (display)
+  setTrackingState(true);
+});
+stopBtn.addEventListener('click', () => {
+  sendAction('stop');
+  setTrackingState(false);
+});
 resetBtn.addEventListener('click', () => {
   // zero all sliders locally without re-sending values
   Object.entries(sliders).forEach(([name, inp]) => {
@@ -324,14 +281,41 @@ resetBtn.addEventListener('click', () => {
     if (vEl) vEl.textContent = (name === 'spine') ? '0' : '0.0';
   });
 
-  setTrackingState(false);  // updates pill
-  clearFeedback();          // ← clear meters + skeleton immediately
-  sendAction('reset');      // display runs resetAll() and echoes zeros
+  setTrackingState(false);   // updates pill + disables print
+  clearFeedback();           // clear meters + skeleton immediately
+  sendAction('reset');       // display runs resetAll() and echoes zeros
   // (no sendValues() here)
 });
 
+// CONTROL SIDE
+let isAveraging = false;
+let avgTimer = null;
+const AVG_MS = 2500;
 
-printBtn.addEventListener('click', () => { safeSend({ type:'print' }); });
+printBtn.addEventListener('click', onPrintButton);
+
+function onPrintButton() {
+  if (!isAveraging) {
+    isAveraging = true;
+    printBtn.textContent = 'Averaging… tap to print';
+    safeSend({ type: 'startTracking' });  // optional, if you gate sampling by tracking
+    safeSend({ type: 'beginSession' });   // tell DISPLAY to start averaging
+
+    avgTimer = setTimeout(() => {
+      safeSend({ type: 'print' });        // tell DISPLAY to print avg
+      isAveraging = false;
+      printBtn.textContent = 'Print Avg';
+    }, AVG_MS);
+  } else {
+    if (avgTimer) clearTimeout(avgTimer);
+    safeSend({ type: 'print' });
+    isAveraging = false;
+    printBtn.textContent = 'Print Avg';
+  }
+}
+
+
+
 
 // Orientation segmented buttons
 const seg = document.querySelectorAll('.seg > button');
@@ -343,7 +327,8 @@ seg.forEach(btn => btn.addEventListener('click', () => {
 
 function setTrackingState(on){
   setPill(trkPill, `Tracking: ${on? 'ON':'OFF'}`, on ? 'ok' : '');
-  if (!on) clearFeedback();   // ← add this line
+  if (printBtn) printBtn.disabled = !on;  // enable Print only while tracking
+  if (!on) clearFeedback();
 }
 
 // =============================
@@ -351,7 +336,12 @@ function setTrackingState(on){
 // =============================
 function safeSend(obj){ if (socket && socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify(obj)); } }
 
-function collectValues(){ const emotion = {}; const region = {}; EMOTIONS.forEach(n => emotion[n] = Number(sliders[n].value)); REGIONS.forEach(n => region[n]  = Number(sliders[n].value)); return { emotion, region }; }
+function collectValues(){
+  const emotion = {}; const region = {};
+  EMOTIONS.forEach(n => emotion[n] = Number(sliders[n].value));
+  REGIONS.forEach( n => region[n]  = Number(sliders[n].value));
+  return { emotion, region };
+}
 function sendValues(){ safeSend({ type:'sliders', ...collectValues() }); setPill(echoPill, 'Echo: sent', ''); }
 function sendValuesThrottled(){ if (sendTimer) return; sendTimer = setTimeout(() => { sendTimer=null; sendValues(); }, 60); }
 function sendAction(action){ safeSend({ type:'action', action }); }
@@ -361,13 +351,14 @@ function sendOrientation(value){ safeSend({ type:'orientation', value }); }
 // Live metrics (from Display)
 // =============================
 const METRIC_KEYS = [
-  ['movementVelocity', 0, 10],
-  ['fastVel', 0, 10],
-  ['structure', 0, 1],
-  ['balance', 0, 1],
-  ['postureLean', 0, 1],
-  ['avgY', 0, 480]
+  ['movementVelocity', 0, 1],
+  ['fastVel',          0, 1],
+  ['structure',        0, 1],
+  ['balance',          0, 1],
+  ['postureLean',      0, 1],
+  ['avgY',             0, 1]
 ];
+
 
 let latestPose = null;
 const EDGES = [
@@ -381,7 +372,6 @@ const EDGES = [
   ['rightHip','rightKnee'], ['rightKnee','rightAnkle'],
   ['leftShoulder','nose'], ['rightShoulder','nose'],
 ];
-
 
 const metricsEl = document.getElementById('metrics');
 const meters = new Map();
@@ -416,10 +406,8 @@ function drawSkeleton(){
   const cvs = document.getElementById('skelCanvas');
   if (!cvs || !latestPose?.keypoints) return;
 
-  // Match canvas pixels to CSS size
   const rect = cvs.getBoundingClientRect();
-  if (cvs.width  !== Math.floor(rect.width) ||
-      cvs.height !== Math.floor(rect.height)) {
+  if (cvs.width  !== Math.floor(rect.width) || cvs.height !== Math.floor(rect.height)) {
     cvs.width  = Math.floor(rect.width);
     cvs.height = Math.floor(rect.height);
   }
@@ -429,13 +417,11 @@ function drawSkeleton(){
 
   ctx.clearRect(0, 0, W, H);
 
-  // Build part -> point map (scaled to canvas)
   const pts = new Map();
   latestPose.keypoints.forEach(([part, nx, ny, s]) => {
     pts.set(part, { x: nx * W, y: ny * H, s });
   });
 
-  // Bones
   ctx.lineWidth = 2;
   ctx.strokeStyle = 'rgba(160,190,255,0.9)';
   ctx.beginPath();
@@ -448,7 +434,6 @@ function drawSkeleton(){
   });
   ctx.stroke();
 
-  // Joints
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   pts.forEach(p => {
     if ((p.s ?? 0) < 0.15) return;
@@ -460,30 +445,51 @@ function drawSkeleton(){
 }
 
 function clearFeedback(){
-  // reset metric bars/text
   meters.forEach(m => {
     m.fill.style.width = '0%';
     m.mval.textContent = '—';
   });
 
-  // clear skeleton canvas
   latestPose = null;
   const cvs = document.getElementById('skelCanvas');
   if (cvs) {
-    // willReadFrequently helps performance warnings
     const ctx = cvs.getContext('2d', { willReadFrequently: true });
     if (ctx) ctx.clearRect(0, 0, cvs.width, cvs.height);
   }
 }
 
+let __applyingEcho = false;
 
 function applyEcho(msg){
   try {
-    if (msg.emotion) Object.entries(msg.emotion).forEach(([k,v]) => { if (sliders[k]) { sliders[k].value = v; sliders[k].dispatchEvent(new Event('input')); } });
-    if (msg.region)  Object.entries(msg.region) .forEach(([k,v]) => { if (sliders[k]) { sliders[k].value = v; sliders[k].dispatchEvent(new Event('input')); } });
-    setPill(echoPill, 'Echo: synced', 'ok');
-  } catch(e){ setPill(echoPill, 'Echo: error', 'err'); }
+    __applyingEcho = true;
+    if (msg.emotion) Object.entries(msg.emotion).forEach(([k,v]) => {
+      if (sliders[k]) {
+        sliders[k].value = v;
+        const vEl = sliders[k].parentElement.querySelector('.val');
+        if (vEl) vEl.textContent = Number(v).toFixed(1);
+      }
+    });
+    if (msg.region)  Object.entries(msg.region).forEach(([k,v]) => {
+      if (sliders[k]) {
+        sliders[k].value = v;
+        const vEl = sliders[k].parentElement.querySelector('.val');
+        if (vEl) vEl.textContent = (k === 'spine') ? String(v|0) : Number(v).toFixed(1);
+      }
+    });
+  } finally {
+    __applyingEcho = false;
+  }
+  setPill(echoPill, 'Echo: synced', 'ok');
 }
+
+// throttle sender: bail if echoing
+function sendValuesThrottled(){
+  if (__applyingEcho) return;     // 🔒 avoid ping-pong
+  if (sendTimer) return;
+  sendTimer = setTimeout(() => { sendTimer=null; sendValues(); }, 60);
+}
+
 </script>
 </body>
 </html>
