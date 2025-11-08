@@ -2,12 +2,22 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Energy Bodies — Control Panel</title>
+  <title>Energy Bodies—-Control</title>
   <script defer src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
   <style>
     :root {
       color-scheme: dark;
+       /* type tokens */
+      --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --fs-xs: 12px;
+      --fs-sm: 13px;
+      --fs-md: 14px;
+      --fs-lg: 18px;
+      --fs-xl: clamp(16px, 2.2vw, 20px);
+      --lh-tight: 1.2;
+      --lh-normal: 1.5;
       --gap: 12px;
       --radius: 14px;
       --panel-bg: #0b0b0b;
@@ -18,9 +28,17 @@
       --label-w: 40px;
       --value-w: 40px;
       --thumb: 22px;
+        /* button sizing (independent from slider --thumb) */
+      --control-h: 44px;   /* target min tap size on iPad */
+      --btn-px: 12px;      /* horizontal padding */
+      --btn-py: 10px;      /* vertical padding (used if taller than min) */
+      --btn-radius: 12px;  /* button corner radius */
     }
-    html, body { margin: 0; padding: 0; background: #000; color: #fff; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-
+    html, body {
+      font-family: var(--font-sans);
+      font-size: var(--fs-md);
+      line-height: var(--lh-normal);
+    }
     header { position: sticky; top: 0; z-index: 10; background: linear-gradient(#000, rgba(0,0,0,0.82)); border-bottom: 1px solid #222; }
     .header-inner{
       height: var(--header-h);
@@ -29,11 +47,23 @@
       justify-content: space-between;
       gap: 12px;
       padding: 8px 12px;
+      text-transform: uppercase;
     }
-    .title { font-weight: 700; letter-spacing: .4px; font-size: 16px; }
+
+    .title {
+      font-size: var(--fs-xl);
+      font-weight: 500;
+      letter-spacing: .02em;
+    }    
+    
     .hdr-right { display: flex; align-items: center; gap: 8px; }
-    .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--pill-bg); border: 1px solid #2a2a2a; }
-    .ok { background:#0b2; border-color:#184; }
+    .pill {
+      font-family: var(--font-sans);
+      font-size: var(--fs-xs);
+      font-weight: 300;
+      letter-spacing: .02em;
+    }
+    .ok { background:rgb(74, 151, 88); border-color:rgb(8, 159, 73); }
     .warn { background:#552; border-color:#774; }
     .err { background:#400; border-color:#622; }
 
@@ -56,7 +86,13 @@
     }
 
     .panel { background: var(--panel-bg); border: 1px solid var(--panel-bd); border-radius: var(--radius); padding: 12px; min-height: 120px; max-height: calc(100vh - var(--header-h) - (var(--gap) * 2)); overflow: auto; -webkit-overflow-scrolling: touch; }
-    .panel h3 { margin: 0 0 10px; font-size: 15px; letter-spacing: .2px; color: #9ad; }
+    .panel h3 {
+      font-family: var(--font-sans);
+      font-size: var(--fs-lg);
+      font-weight: 600;
+      line-height: var(--lh-tight);
+    }    
+
     .panel p { margin: 6px 0 0; opacity:.9; }
 
     #intro    { grid-area: intro; }
@@ -77,32 +113,71 @@
       border-radius: 10px;
     }
     .row-top{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .row label{ text-transform: capitalize; font-size: 13px; margin: 0; }
-    .row .val{ text-align: right; font-variant-numeric: tabular-nums; opacity: 0.9; font-size: 12px; min-width: 42px; }
+
+    .row label {
+      font-family: var(--font-sans);
+      font-size: var(--fs-sm);
+      font-weight: 400;
+    }    
+    .row .val,
+    .mval {
+      font-family: var(--font-sans);
+      font-size: var(--fs-xs);
+    }    
     .row input[type="range"]{ width: 100%; min-width: 0; appearance: none; height: 20px; background: transparent; }
 
-    input[type="range"]::-webkit-slider-runnable-track { height: 6px; background: var(--track); border-radius: 999px; }
-    input[type="range"]::-webkit-slider-thumb{
-      -webkit-appearance: none; appearance: none;
-      width: var(--thumb); height: var(--thumb);
-      margin-top: calc((6px - var(--thumb)) / 2);
-      border-radius: 50%;
-      background: #9ad; border: 2px solid #bfe;
-    }
-    input[type="range"] { width: 100%; appearance: none; height: 30px; background: transparent; }
-    input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; border-radius: 50%; background: #9ad; margin-top: -8px; border: 2px solid #bfe; }
+    input[type="range"] { height: 32px; }
 
-    .btns { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
-    button, .seg > button { background: #161616; color: #fff; border: 1px solid #2a2a2a; border-radius: 10px; padding: 9px 12px; font-size: 13px; }
-    button:hover { background:#1d1d1d; }
-    .seg { display:inline-flex; background:#121212; border:1px solid #222; border-radius:10px; overflow:hidden; margin-top: 8px; }
-    .seg > button { border: none; border-right:1px solid #222; padding: 8px 12px; }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 8px;                 /* was 6px */
+      background: var(--track);
+      border-radius: 999px;
+    }
+
+    :root { --thumb: 20px; }       /* was 22px */
+
+    input[type="range"]::-webkit-slider-thumb {
+      width: var(--thumb);
+      height: var(--thumb);
+      margin-top: calc((8px - var(--thumb)) / 2);  /* centers on the 8px track */
+      border-radius: 50%;
+      background: #757677;
+      border: 0px solid #e6f0ff;
+    }
+
+    /* Regular buttons and segmented buttons share height */
+    button, .seg > button {
+      min-height: var(--control-h);    /* ensures they’re not skinny */
+      padding: var(--btn-py) var(--btn-px);
+      font-size: var(--fs-sm, 13px);   /* or bump to var(--fs-md) */
+      font-weight: 600;
+      border-radius: var(--btn-radius);
+      -webkit-appearance: none; appearance: none;
+      -webkit-tap-highlight-color: transparent;
+      line-height: 1;                  /* prevent extra vertical shrink/expansion */
+    }
+
+    /* Segmented group should clip to the same rounded height */
+    .seg{
+      display:inline-flex;
+      overflow:hidden;
+      border-radius: var(--btn-radius);
+    }
+
+    /* Optional: make the orientation segmented buttons exactly same height */
+    .seg > button{
+      display:flex; align-items:center; justify-content:center;
+      padding: 0 var(--btn-px);          /* height from min-height, not padding */
+    }
+
     .seg > button.is-active { background:#223; color:#9ad; }
 
-    .metrics { display: grid; grid-template-columns: 1fr; gap: 8px; }
-    @media (min-width: 1000px) { .metrics { grid-template-columns: 1fr 1fr; } }
-    .metric { background:#111; border:1px solid #1c1c1c; border-radius: 10px; padding: 8px 10px; }
-    .metric h4 { margin: 0 0 6px; font-size: 12px; color:#ccc; opacity:0.9; font-weight:600; letter-spacing: .2px; }
+    .metric    @media (min-width: 1000px) { .metrics { grid-template-columns: 1fr 1fr; } }
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;  /* force 2 cols by default */
+      gap: 8px;
+}    .metric h4 { margin: 0 0 6px; font-size: 12px; color:#ccc; opacity:0.9; font-weight:600; letter-spacing: .2px; }
     .bar { height: 8px; background:#222; border-radius: 999px; overflow:hidden; }
     .bar > i { display:block; height:100%; width:0%; background:#9ad; }
     .mval { text-align:right; font-variant-numeric: tabular-nums; font-size:12px; opacity:.9; margin-top: 4px; }
@@ -117,6 +192,58 @@
       border-radius: 8px;
       border: 1px solid #1c1c1c;
     }
+
+    /* 1) Normalize button rendering on iOS & keep corners */
+    button, .seg > button {
+      -webkit-appearance: none;  /* iOS */
+      appearance: none;
+      -webkit-tap-highlight-color: transparent; /* kill grey square flash */
+      border-radius: 10px;       /* your radius */
+      position: relative;        /* for the custom press overlay */
+      overflow: hidden;          /* ensures any highlight stays rounded */
+      background-clip: padding-box;
+    }
+
+    /* 2) Keep the same radius when pressed/focused */
+    button:active,
+    button:focus-visible,
+    .seg > button:active,
+    .seg > button:focus-visible {
+      border-radius: 10px;
+      outline: none; /* replace with your own focus style below */
+    }
+
+    /* 3) Optional: custom pressed state that respects rounding */
+    button:active::after,
+    .seg > button:active::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.06); /* subtle press glow */
+      pointer-events: none;
+    }
+
+    /* 4) Accessible focus ring that also stays rounded */
+    button:focus-visible,
+    .seg > button:focus-visible {
+      box-shadow: 0 0 0 3px rgba(153, 204, 255, 0.35); /* tweak to taste */
+    }
+
+    /* === Controls layout & button sizing (override) === */
+    .btns{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    button{
+      min-height: var(--control-h);
+      padding: 0 var(--btn-px);
+      border-radius: var(--btn-radius);
+      width: 100%;
+    }
+
+
     @media (min-width: 1000px){ #skelCanvas { height: 300px; } }
   </style>
 </head>
@@ -124,7 +251,7 @@
 
   <header>
     <div class="header-inner">
-      <div class="title">Energy Bodies — Control Panel</div>
+      <div class="title">Energy Bodies</div>
       <div class="hdr-right">
         <span id="wsPill" class="pill">WS: …</span>
         <span id="echoPill" class="pill">Echo: —</span>
@@ -156,17 +283,14 @@ Press <strong>Print</strong> to receive your <strong>Energy Body</strong> , a vi
 
     <section id="controls" class="panel">
       <h3>Controls</h3>
-      <div class="btns" style="margin-bottom:8px">
+      <div class="btns">
         <button id="startBtn">Start</button>
         <button id="stopBtn">Stop</button>
         <button id="resetBtn">Reset</button>
         <button id="printBtn" disabled>Print</button>
       </div>
-      <div class="seg" role="group" aria-label="Orientation">
-        <button data-orient="landscape" class="is-active">Landscape</button>
-        <button data-orient="portrait">Portrait</button>
-      </div>
     </section>
+
 
     <section id="feedback" class="panel">
       <h3>Live Feedback</h3>
