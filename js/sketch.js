@@ -483,13 +483,290 @@ function startTrackingImpl() {
 function stopTrackingImpl() {
   if (!trackingStarted) return;
 
-  trackingStarted = false;
-  window.__ebTrackingStarted = false;
-  poses = [];
+    // Generate enhanced receipt with session data
+    const receiptHTML = generateReceiptHTML(dataURL, avg);
 
-  if (window.EnergyBodiesDisplay) {
-    EnergyBodiesDisplay.tracking(false);
+    const w = window.open('', '_blank');
+    w.document.write(receiptHTML);
+    w.document.close();
+    w.onload = () => { w.focus(); w.print(); };
+  });
+}
+
+function generateReceiptHTML(imageDataURL, sessionData) {
+  const timestamp = new Date().toLocaleString();
+  const durationSec = (sessionData.durationMs / 1000).toFixed(1);
+
+  // Format numbers
+  const fmt = (val) => (typeof val === 'number' ? val.toFixed(2) : '0.00');
+  const fmtPct = (val) => (typeof val === 'number' ? (val * 100).toFixed(0) + '%' : '0%');
+
+  // Build emotion rows
+  let emotionRows = '';
+  for (const name of (emotionNames||[])) {
+    const val = sessionData.emotions?.[name] ?? 0;
+    const barWidth = (val / 5) * 100;
+    emotionRows += `
+      <tr>
+        <td class="label">${name.charAt(0).toUpperCase() + name.slice(1)}</td>
+        <td class="value">${fmt(val)}</td>
+        <td class="bar">
+          <div class="bar-fill" style="width: ${barWidth}%"></div>
+        </td>
+      </tr>
+    `;
   }
+
+  // Build region rows
+  let regionRows = '';
+  for (let i = 0; i < (regionNames||[]).length; i++) {
+    const name = regionNames[i];
+    const val = sessionData.regionWidths?.[i] ?? 0;
+    const barWidth = (val / 5) * 100;
+    const displayName = name.replace(/([A-Z])/g, ' $1').trim();
+    regionRows += `
+      <tr>
+        <td class="label">${displayName.charAt(0).toUpperCase() + displayName.slice(1)}</td>
+        <td class="value">${fmt(val)}</td>
+        <td class="bar">
+          <div class="bar-fill" style="width: ${barWidth}%"></div>
+        </td>
+      </tr>
+    `;
+  }
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Energy Body Receipt</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          html, body {
+            background: #000;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+          }
+          .receipt {
+            width: 4in;
+            margin: 0 auto;
+            background: #000;
+            padding: 0.25in;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 2px dashed #fff;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+          }
+          .header h1 {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            letter-spacing: 1px;
+          }
+          .header .timestamp {
+            font-size: 9px;
+            opacity: 0.8;
+          }
+          .image-container {
+            width: 100%;
+            margin: 15px 0;
+            text-align: center;
+          }
+          .image-container img {
+            width: 100%;
+            height: auto;
+            border: 1px solid #fff;
+          }
+          .section {
+            margin: 15px 0;
+            border-top: 1px dashed #666;
+            padding-top: 10px;
+          }
+          .section-title {
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .meta-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 10px;
+          }
+          .meta-item {
+            font-size: 10px;
+          }
+          .meta-item .label {
+            opacity: 0.7;
+          }
+          .meta-item .value {
+            font-weight: bold;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 5px;
+          }
+          tr {
+            border-bottom: 1px solid #333;
+          }
+          td {
+            padding: 5px 2px;
+            font-size: 10px;
+          }
+          td.label {
+            width: 40%;
+            text-transform: capitalize;
+          }
+          td.value {
+            width: 20%;
+            text-align: right;
+            font-weight: bold;
+          }
+          td.bar {
+            width: 40%;
+            padding-left: 8px;
+          }
+          .bar-fill {
+            height: 8px;
+            background: #fff;
+            transition: width 0.3s;
+          }
+          .core-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 8px;
+          }
+          .metric {
+            text-align: center;
+            padding: 8px;
+            border: 1px solid #444;
+          }
+          .metric .name {
+            font-size: 9px;
+            opacity: 0.7;
+            margin-bottom: 3px;
+          }
+          .metric .val {
+            font-size: 14px;
+            font-weight: bold;
+          }
+          .footer {
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 2px dashed #fff;
+            text-align: center;
+            font-size: 9px;
+            opacity: 0.6;
+          }
+          @page {
+            size: 4in 6in;
+            margin: 0;
+          }
+          @media print {
+            body { background: #000; }
+            .receipt { margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="receipt">
+          <!-- Header -->
+          <div class="header">
+            <h1>ENERGY BODY</h1>
+            <div class="timestamp">${timestamp}</div>
+          </div>
+
+          <!-- Session Info -->
+          <div class="section">
+            <div class="section-title">Session Summary</div>
+            <div class="meta-grid">
+              <div class="meta-item">
+                <div class="label">Duration:</div>
+                <div class="value">${durationSec}s</div>
+              </div>
+              <div class="meta-item">
+                <div class="label">Samples:</div>
+                <div class="value">${sessionData.samples}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Energy Body Image -->
+          <div class="image-container">
+            <img src="${imageDataURL}" alt="Energy Body">
+          </div>
+
+          <!-- Core Metrics -->
+          <div class="section">
+            <div class="section-title">Core Metrics</div>
+            <div class="core-metrics">
+              <div class="metric">
+                <div class="name">Structure</div>
+                <div class="val">${fmtPct(sessionData.structure)}</div>
+              </div>
+              <div class="metric">
+                <div class="name">Balance</div>
+                <div class="val">${fmt(sessionData.balance)}</div>
+              </div>
+              <div class="metric">
+                <div class="name">Posture</div>
+                <div class="val">${fmtPct(sessionData.posture)}</div>
+              </div>
+              <div class="metric">
+                <div class="name">Velocity</div>
+                <div class="val">${fmtPct(sessionData.velocity)}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Emotions -->
+          <div class="section">
+            <div class="section-title">Emotional State</div>
+            <table>
+              ${emotionRows}
+            </table>
+          </div>
+
+          <!-- Body Regions -->
+          <div class="section">
+            <div class="section-title">Region Activity</div>
+            <table>
+              ${regionRows}
+            </table>
+          </div>
+
+          <!-- Footer -->
+          <div class="footer">
+            Energy Bodies — Session ${Date.now().toString().slice(-6)}
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+function onPrintSnapshotFallback(){
+  const dataURL = captureEnergyBodyHiRes();
+  const w = window.open('', '_blank');
+  w.document.write(`
+    <html><head><title>Print Energy Body</title>
+      <style>
+        html,body{margin:0;padding:0;background:#000;}
+        img{width:100%;height:auto;display:block;}
+        @page { size: 4in 6in; margin: 0; }
+      </style>
+    </head>
+    <body><img src="${dataURL}"></body></html>
+  `);
+  w.document.close();
+  w.onload = () => { w.focus(); w.print(); };
 }
 
 // Register implementations with eb-init.js
