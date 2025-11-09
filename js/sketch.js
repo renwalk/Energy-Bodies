@@ -364,14 +364,13 @@ function startTrackingImpl() {
 function stopTrackingImpl() {
   if (!trackingStarted) return;
 
-    // Generate enhanced receipt with session data
-    const receiptHTML = generateReceiptHTML(dataURL, avg);
+  trackingStarted = false;
+  window.__ebTrackingStarted = false;
+  poses = [];
 
-    const w = window.open('', '_blank');
-    w.document.write(receiptHTML);
-    w.document.close();
-    w.onload = () => { w.focus(); w.print(); };
-  });
+  if (window.EnergyBodiesDisplay) {
+    EnergyBodiesDisplay.tracking(false);
+  }
 }
 
 function generateReceiptHTML(imageDataURL, sessionData) {
