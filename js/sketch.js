@@ -129,134 +129,16 @@ let regionMaxWidths = {
 };
 
 /* =============================
-   2) AVERAGING CLASSES
+   2) INITIALIZE SESSION
    ============================= */
-class OnlineMean {
-  constructor() { this.mean = 0; this.n = 0; }
-  add(x) {
-    if (!Number.isFinite(x)) return;
-    this.n++;
-    this.mean += (x - this.mean) / this.n;
-  }
+// Session is initialized by eb-init.js
+// Just ensure it exists and set up print handler
+if (!window.__ebSession) {
+  console.error('[SKETCH] ERROR: eb-init.js did not initialize session!');
+  window.__ebSession = new SessionAverager();
 }
 
-class OnlineMeanArray {
-  constructor(len = 0) {
-    this.means = new Array(len).fill(0);
-    this.n = 0;
-  }
-  add(arr) {
-    if (!arr || !arr.length) return;
-    if (this.means.length !== arr.length) {
-      this.means = new Array(arr.length).fill(0);
-    }
-    this.n++;
-    for (let i = 0; i < arr.length; i++) {
-      const x = arr[i];
-      if (!Number.isFinite(x)) continue;
-      this.means[i] += (x - this.means[i]) / this.n;
-    }
-  }
-}
-
-class SessionAverager {
-  constructor() {
-    this.reset();
-  }
-
-  reset() {
-    this.active = false;
-    this.startTs = 0;
-    this.lastTs = 0;
-    this.samples = 0;
-    this.structure = new OnlineMean();
-    this.balance = new OnlineMean();
-    this.posture = new OnlineMean();
-    this.velocity = new OnlineMean();
-    this.emotions = {
-      anxiety: new OnlineMean(),
-      sadness: new OnlineMean(),
-      joy: new OnlineMean(),
-      anger: new OnlineMean(),
-      fear: new OnlineMean(),
-      calm: new OnlineMean()
-    };
-    this.regionWidths = new OnlineMeanArray(6);
-    this.segmentProfile = new OnlineMeanArray(3);
-  }
-
-  begin() {
-    this.reset();
-    this.active = true;
-    this.startTs = performance.now();
-    this.lastTs = this.startTs;
-    console.log('[SESSION] Started averaging');
-  }
-
-  add(sample) {
-    if (!this.active) return;
-
-    const now = performance.now();
-    this.lastTs = now;
-
-    this.structure.add(sample.structure ?? 0);
-    this.balance.add(sample.balance ?? 0);
-    this.posture.add(sample.posture ?? 0);
-    this.velocity.add(sample.velocity ?? 0);
-
-    if (sample.emotions) {
-      for (const k in this.emotions) {
-        this.emotions[k].add(sample.emotions[k] ?? 0);
-      }
-    }
-
-    if (sample.regionWidths) {
-      this.regionWidths.add(sample.regionWidths);
-    }
-
-    if (sample.segmentProfile) {
-      this.segmentProfile.add(sample.segmentProfile);
-    }
-
-    this.samples++;
-  }
-
-  end() {
-    const out = {
-      durationMs: performance.now() - this.startTs,
-      samples: this.samples,
-      structure: this.structure.mean,
-      balance: this.balance.mean,
-      posture: this.posture.mean,
-      velocity: this.velocity.mean,
-      emotions: {},
-      regionWidths: this.regionWidths.means.slice(),
-      segmentProfile: this.segmentProfile.means.slice()
-    };
-
-    for (const k in this.emotions) {
-      out.emotions[k] = this.emotions[k].mean;
-    }
-
-    this.active = false;
-    console.log('[SESSION] Ended:', out);
-    return out;
-  }
-}
-
-// Global session instance
-window.__ebSession = null;
-
-/* =============================
-   3) GLOBAL API BINDINGS
-   ============================= */
-window.beginSession = function () {
-  if (!window.__ebSession) {
-    window.__ebSession = new SessionAverager();
-  }
-  window.__ebSession.begin();
-};
-
+// Override onPrint with the actual implementation
 window.onPrint = function () {
   console.log('[PRINT] Triggered');
   onPrintAverageThenSnapshot();
@@ -267,7 +149,7 @@ function clamp01(x) {
 }
 
 /* =============================
-   4) P5 SETUP / DRAW
+   3) P5 SETUP / DRAW
    ============================= */
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -292,9 +174,8 @@ function setup() {
 
   originOffset = createVector(width / 2, height / 2);
 
-  // Initialize session
-  window.__ebSession = new SessionAverager();
-  console.log('[SESSION] Initialized');
+  // Session already initialized by eb-init.js
+  console.log('[SESSION] Using eb-init.js session:', window.__ebSession ? 'OK' : 'MISSING');
 
   // Initialize sliders
   emotionNames.forEach(name => {
