@@ -1,16 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- Removed Google Fonts to avoid external fetch -->
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Energy Bodies—-Control</title>
-  <script defer src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
+  <!-- Removed CDN p5 script; not used in this file and blocks offline -->
   <style>
     :root {
       color-scheme: dark;
-       /* type tokens */
-      --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      /* type tokens */
+      --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       --fs-xs: 12px;
       --fs-sm: 13px;
       --fs-md: 14px;
@@ -28,19 +29,36 @@
       --label-w: 40px;
       --value-w: 40px;
       --thumb: 22px;
-        /* button sizing (independent from slider --thumb) */
-      --control-h: 44px;   /* target min tap size on iPad */
-      --btn-px: 12px;      /* horizontal padding */
-      --btn-py: 10px;      /* vertical padding (used if taller than min) */
-      --btn-radius: 12px;  /* button corner radius */
+      /* button sizing (independent from slider --thumb) */
+      --control-h: 44px;
+      /* target min tap size on iPad */
+      --btn-px: 12px;
+      /* horizontal padding */
+      --btn-py: 10px;
+      /* vertical padding (used if taller than min) */
+      --btn-radius: 12px;
+      /* button corner radius */
     }
-    html, body {
+
+    html,
+    body {
+      margin: 0;
+      background: #000;
+      color: #ddd;
       font-family: var(--font-sans);
       font-size: var(--fs-md);
       line-height: var(--lh-normal);
     }
-    header { position: sticky; top: 0; z-index: 10; background: linear-gradient(#000, rgba(0,0,0,0.82)); border-bottom: 1px solid #222; }
-    .header-inner{
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: linear-gradient(#000, rgba(0, 0, 0, 0.82));
+      border-bottom: 1px solid #222;
+    }
+
+    .header-inner {
       height: var(--header-h);
       display: flex;
       align-items: center;
@@ -54,55 +72,115 @@
       font-size: var(--fs-xl);
       font-weight: 500;
       letter-spacing: .02em;
-    }    
-    
-    .hdr-right { display: flex; align-items: center; gap: 8px; }
+    }
+
+    .hdr-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     .pill {
       font-family: var(--font-sans);
       font-size: var(--fs-xs);
       font-weight: 300;
       letter-spacing: .02em;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #bbb;
     }
-    .ok { background:rgb(74, 151, 88); border-color:rgb(8, 159, 73); }
-    .warn { background:#552; border-color:#774; }
-    .err { background:#400; border-color:#622; }
 
-    .wrap { display: grid; gap: var(--gap); padding: var(--gap); max-width: 1600px; margin: 0 auto; grid-auto-rows: minmax(0, auto); }
-    .wrap { grid-template-columns: repeat(2, minmax(0,1fr)); grid-template-areas:
-      "intro    regions"
-      "controls regions"
-      "emotions feedback" 
-      "feedback feedback";
+    .ok,
+    .warn,
+    .err {
+      background: transparent !important;
+      border-color: transparent !important;
+      color: #bbb !important;
     }
+
+    .wrap {
+      display: grid;
+      gap: var(--gap);
+      padding: var(--gap);
+      max-width: 1600px;
+      margin: 0 auto;
+      grid-auto-rows: minmax(0, auto);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-areas:
+        "intro    regions"
+        "controls regions"
+        "emotions feedback"
+        "feedback feedback";
+    }
+
     @media (min-width: 1000px) {
-      .wrap { grid-template-columns: repeat(4, minmax(0,1fr)); grid-template-areas:
-        "intro    regions emotions feedback"
-        "controls regions emotions feedback"; }
-    }
-    @media (min-width: 1366px) {
-      .wrap { grid-template-columns: repeat(5, minmax(0,1fr)); grid-template-areas:
-        "intro    regions emotions feedback feedback"
-        "intro regions controls  feedback feedback"; }
+      .wrap {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-areas:
+          "intro    regions emotions feedback"
+          "controls regions emotions feedback";
+      }
     }
 
-    .panel { background: var(--panel-bg); border: 1px solid var(--panel-bd); border-radius: var(--radius); padding: 12px; min-height: 120px; max-height: calc(100vh - var(--header-h) - (var(--gap) * 2)); overflow: auto; -webkit-overflow-scrolling: touch; }
+    @media (min-width: 1366px) {
+      .wrap {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-areas:
+          "intro    regions emotions feedback feedback"
+          "intro regions controls  feedback feedback";
+      }
+    }
+
+    .panel {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-bd);
+      border-radius: var(--radius);
+      padding: 12px;
+      min-height: 120px;
+      max-height: calc(100vh - var(--header-h) - (var(--gap) * 2));
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
     .panel h3 {
-      font-family: var(--font-sans);
       font-size: var(--fs-lg);
       font-weight: 600;
       line-height: var(--lh-tight);
-    }    
+      margin: 0 0 6px;
+    }
 
-    .panel p { margin: 6px 0 0; opacity:.9; }
+    .panel p {
+      margin: 6px 0 0;
+      opacity: .9;
+    }
 
-    #intro    { grid-area: intro; }
-    #regions  { grid-area: regions; }
-    #emotions { grid-area: emotions; }
-    #controls { grid-area: controls; }
-    #feedback { grid-area: feedback; }
+    #intro {
+      grid-area: intro;
+    }
 
-    .grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
-    .row{
+    #regions {
+      grid-area: regions;
+    }
+
+    #emotions {
+      grid-area: emotions;
+    }
+
+    #controls {
+      grid-area: controls;
+    }
+
+    #feedback {
+      grid-area: feedback;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .row {
       display: grid;
       grid-template-columns: 1fr;
       grid-template-rows: auto auto;
@@ -112,78 +190,142 @@
       padding: 8px 10px;
       border-radius: 10px;
     }
-    .row-top{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+    .row-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
 
     .row label {
-      font-family: var(--font-sans);
       font-size: var(--fs-sm);
       font-weight: 400;
-    }    
+    }
+
     .row .val,
     .mval {
-      font-family: var(--font-sans);
       font-size: var(--fs-xs);
-    }    
-    .row input[type="range"]{ width: 100%; min-width: 0; appearance: none; height: 20px; background: transparent; }
+    }
 
-    input[type="range"] { height: 32px; }
+    .row input[type="range"] {
+      width: 100%;
+      min-width: 0;
+      appearance: none;
+      height: 20px;
+      background: transparent;
+    }
+
+    input[type="range"] {
+      height: 32px;
+    }
 
     input[type="range"]::-webkit-slider-runnable-track {
-      height: 8px;                 /* was 6px */
+      height: 8px;
       background: var(--track);
       border-radius: 999px;
     }
 
-    :root { --thumb: 20px; }       /* was 22px */
+    :root {
+      --thumb: 20px;
+    }
 
     input[type="range"]::-webkit-slider-thumb {
       width: var(--thumb);
       height: var(--thumb);
-      margin-top: calc((8px - var(--thumb)) / 2);  /* centers on the 8px track */
+      margin-top: calc((8px - var(--thumb)) / 2);
       border-radius: 50%;
       background: #757677;
-      border: 0px solid #e6f0ff;
+      border: 0;
     }
 
-    /* Regular buttons and segmented buttons share height */
-    button, .seg > button {
-      min-height: var(--control-h);    /* ensures they’re not skinny */
-      padding: var(--btn-py) var(--btn-px);
-      font-size: var(--fs-sm, 13px);   /* or bump to var(--fs-md) */
+    /* Buttons */
+    .btns {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    button,
+    .seg>button {
+      min-height: var(--control-h);
+      padding: 0 var(--btn-px);
+      font-size: var(--fs-sm);
       font-weight: 600;
       border-radius: var(--btn-radius);
-      -webkit-appearance: none; appearance: none;
+      -webkit-appearance: none;
+      appearance: none;
       -webkit-tap-highlight-color: transparent;
-      line-height: 1;                  /* prevent extra vertical shrink/expansion */
+      line-height: 1;
+      width: 100%;
+      background: #1a1a1a;
+      color: #ddd;
+      border: 1px solid #2a2a2a;
     }
 
-    /* Segmented group should clip to the same rounded height */
-    .seg{
-      display:inline-flex;
-      overflow:hidden;
+    .seg {
+      display: inline-flex;
+      overflow: hidden;
       border-radius: var(--btn-radius);
     }
 
-    /* Optional: make the orientation segmented buttons exactly same height */
-    .seg > button{
-      display:flex; align-items:center; justify-content:center;
-      padding: 0 var(--btn-px);          /* height from min-height, not padding */
+    .seg>button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 var(--btn-px);
     }
 
-    .seg > button.is-active { background:#223; color:#9ad; }
+    .seg>button.is-active {
+      background: #223;
+      color: #9ad;
+    }
 
-    .metric    @media (min-width: 1000px) { .metrics { grid-template-columns: 1fr 1fr; } }
     .metrics {
       display: grid;
-      grid-template-columns: 1fr 1fr;  /* force 2 cols by default */
+      grid-template-columns: 1fr 1fr;
       gap: 8px;
-}    .metric h4 { margin: 0 0 6px; font-size: 12px; color:#ccc; opacity:0.9; font-weight:600; letter-spacing: .2px; }
-    .bar { height: 8px; background:#222; border-radius: 999px; overflow:hidden; }
-    .bar > i { display:block; height:100%; width:0%; background:#9ad; }
-    .mval { text-align:right; font-variant-numeric: tabular-nums; font-size:12px; opacity:.9; margin-top: 4px; }
+    }
 
-    #skeletonCard { padding: 8px; }
-    #skeletonCard h4 { margin-bottom: 8px; }
+    .metric h4 {
+      margin: 0 0 6px;
+      font-size: 12px;
+      color: #ccc;
+      opacity: .9;
+      font-weight: 600;
+      letter-spacing: .2px;
+    }
+
+    .bar {
+      height: 8px;
+      background: #222;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar>i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: #9ad;
+    }
+
+    .mval {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+      opacity: .9;
+      margin-top: 4px;
+    }
+
+    #skeletonCard {
+      padding: 8px;
+    }
+
+    #skeletonCard h4 {
+      margin-bottom: 8px;
+    }
+
     #skelCanvas {
       width: 100%;
       height: 260px;
@@ -193,62 +335,20 @@
       border: 1px solid #1c1c1c;
     }
 
-    /* 1) Normalize button rendering on iOS & keep corners */
-    button, .seg > button {
-      -webkit-appearance: none;  /* iOS */
-      appearance: none;
-      -webkit-tap-highlight-color: transparent; /* kill grey square flash */
-      border-radius: 10px;       /* your radius */
-      position: relative;        /* for the custom press overlay */
-      overflow: hidden;          /* ensures any highlight stays rounded */
-      background-clip: padding-box;
+    @media (min-width: 1000px) {
+      #skelCanvas {
+        height: 300px;
+      }
     }
 
-    /* 2) Keep the same radius when pressed/focused */
-    button:active,
-    button:focus-visible,
-    .seg > button:active,
-    .seg > button:focus-visible {
-      border-radius: 10px;
-      outline: none; /* replace with your own focus style below */
+    #wsPill,
+    #echoPill {
+      display: none;
     }
-
-    /* 3) Optional: custom pressed state that respects rounding */
-    button:active::after,
-    .seg > button:active::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: rgba(255,255,255,0.06); /* subtle press glow */
-      pointer-events: none;
-    }
-
-    /* 4) Accessible focus ring that also stays rounded */
-    button:focus-visible,
-    .seg > button:focus-visible {
-      box-shadow: 0 0 0 3px rgba(153, 204, 255, 0.35); /* tweak to taste */
-    }
-
-    /* === Controls layout & button sizing (override) === */
-    .btns{
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    button{
-      min-height: var(--control-h);
-      padding: 0 var(--btn-px);
-      border-radius: var(--btn-radius);
-      width: 100%;
-    }
-
-
-    @media (min-width: 1000px){ #skelCanvas { height: 300px; } }
   </style>
 </head>
-<body>
 
+<body>
   <header>
     <div class="header-inner">
       <div class="title">Energy Bodies</div>
@@ -256,7 +356,6 @@
         <span id="wsPill" class="pill">WS: …</span>
         <span id="echoPill" class="pill">Echo: —</span>
         <span id="trkPill" class="pill">Tracking: OFF</span>
-        
       </div>
     </div>
   </header>
@@ -264,18 +363,15 @@
   <main class="wrap">
     <section id="intro" class="panel">
       <h3>Intro</h3>
-      <p>Adjust body and emotion scales to reflect your state.
-
-Press <strong>Start</strong> and move—the system mirrors your gestures in color and motion.
-
-Press <strong>Print</strong> to receive your <strong>Energy Body</strong> , a visualization of emotion as energy in motion.</p>
+      <p>Adjust body and emotion scales to reflect your state. Press <strong>Start</strong> and move—the system mirrors
+        your gestures in color and motion. Press <strong>Print</strong> to receive your <strong>Energy Body</strong>.
+      </p>
     </section>
 
     <section id="regions" class="panel">
       <h3>Region Inputs</h3>
       <div id="regionGrid" class="grid"></div>
     </section>
-
     <section id="emotions" class="panel">
       <h3>Emotion Inputs</h3>
       <div id="emotionGrid" class="grid"></div>
@@ -291,7 +387,6 @@ Press <strong>Print</strong> to receive your <strong>Energy Body</strong> , a vi
       </div>
     </section>
 
-
     <section id="feedback" class="panel">
       <h3>Live Feedback</h3>
       <div class="metrics" id="metrics"></div>
@@ -302,318 +397,178 @@ Press <strong>Print</strong> to receive your <strong>Energy Body</strong> , a vi
     </section>
   </main>
 
-<script>
-// =============================
-// Config & Schema
-// =============================
-const EMOTIONS = ["anxiety","sadness","joy","anger","fear","calm"]; // 0..5
-const REGIONS  = ["head","neck","armsHands","chest","abdomen","legsFeet","spine"]; // spine 0..100
-const SPINE = "spine";
-const WS_PORT = 8080;
+  <script>
+    // =============================
+    // Config & Schema
+    // =============================
+    const EMOTIONS = ["anxiety", "sadness", "joy", "anger", "fear", "calm"];
+    const REGIONS = ["head", "neck", "armsHands", "chest", "abdomen", "legsFeet", "spine"];
+    const SPINE = "spine";
+    const WS_PORT = 8080;
 
-let socket = null; let retryMs = 800; let sendTimer = null;
-const wsPill  = document.getElementById('wsPill');
-const trkPill = document.getElementById('trkPill');
-const echoPill= document.getElementById('echoPill');
+    let socket = null; let retryMs = 800; let sendTimer = null;
+    const wsPill = document.getElementById('wsPill');
+    const trkPill = document.getElementById('trkPill');
+    const echoPill = document.getElementById('echoPill');
 
-function setPill(el, txt, cls){ if(!el) return; el.textContent = txt; el.className = `pill ${cls||''}`; }
-function wsUrl(port = WS_PORT){ const proto = location.protocol === 'https:' ? 'wss' : 'ws'; return `${proto}://${location.hostname}:${port}`; }
+    function setPill(el, txt, cls) { if (!el) return; el.textContent = txt; el.className = `pill ${cls || ''}`; }
 
-function connectWS(){
-  try { socket = new WebSocket(wsUrl()); } catch (e) { setPill(wsPill, 'WS: error', 'err'); return setTimeout(connectWS, retryMs); }
-  socket.onopen  = () => { setPill(wsPill, 'WS: open', 'ok'); retryMs = 800; };
-  socket.onclose = () => { setPill(wsPill, 'WS: closed', 'warn'); setTimeout(connectWS, Math.min(8000, retryMs *= 1.6)); };
-  socket.onerror = () => { setPill(wsPill, 'WS: error', 'err'); };
-  socket.onmessage = (evt) => {
-    let msg; try { msg = JSON.parse(typeof evt.data === 'string' ? evt.data : (new TextDecoder().decode(evt.data))); } catch { return; }
-    if (!msg || !msg.type) return;
-
-    if (msg.type === 'tracking') setTrackingState(!!msg.on);
-    else if (msg.type === 'pose') {
-      updateMetrics(msg);
-      if (msg.keypoints) { latestPose = msg; requestAnimationFrame(drawSkeleton); }
+    // Use host of the page (works since iPad loads from Mac mini URL)
+    function wsUrl(port = WS_PORT) {
+      const host = new URL(location.href).hostname; // becomes 192.168.0.102 on iPad
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      return `${proto}://${host}:${port}`;
     }
-    else if (msg.type === 'echo') applyEcho(msg);
-  };
-}
-connectWS();
 
-// =============================
-// UI Build
-// =============================
-const emotionGrid = document.getElementById('emotionGrid');
-const regionGrid  = document.getElementById('regionGrid');
-const sliders = {}; // name -> input
+    function connectWS() {
+      try { socket = new WebSocket(wsUrl()); }
+      catch (e) { setPill(wsPill, 'WS: error', 'err'); return setTimeout(connectWS, retryMs); }
+      socket.onopen = () => { setPill(wsPill, 'WS: open', 'ok'); retryMs = 800; };
+      socket.onclose = () => { setPill(wsPill, 'WS: closed', 'warn'); setTimeout(connectWS, Math.min(8000, retryMs *= 1.6)); };
+      socket.onerror = () => { setPill(wsPill, 'WS: error', 'err'); };
+      socket.onmessage = (evt) => {
+        let msg; try { msg = JSON.parse(typeof evt.data === 'string' ? evt.data : (new TextDecoder().decode(evt.data))); } catch { return; }
+        if (!msg || !msg.type) return;
+        if (msg.type === 'tracking') setTrackingState(!!msg.on);
+        else if (msg.type === 'pose') { updateMetrics(msg); if (msg.keypoints) { latestPose = msg; requestAnimationFrame(drawSkeleton); } }
+        else if (msg.type === 'echo') applyEcho(msg);
+      };
+    }
+    console.log('[WS] trying', wsUrl());
+    connectWS();
 
-function makeRow(name, min, max, step) {
-  const row = document.createElement('div');
-  row.className = 'row';
+    // =============================
+    // UI Build
+    // =============================
+    const emotionGrid = document.getElementById('emotionGrid');
+    const regionGrid = document.getElementById('regionGrid');
+    const sliders = {};
 
-  const top = document.createElement('div');
-  top.className = 'row-top';
+    function makeRow(name, min, max, step) {
+      const row = document.createElement('div'); row.className = 'row';
+      const top = document.createElement('div'); top.className = 'row-top';
+      const label = document.createElement('label'); label.textContent = name; label.setAttribute('for', `sl-${name}`);
+      const val = document.createElement('div'); val.className = 'val'; val.textContent = '0.0';
+      top.append(label, val);
+      const input = document.createElement('input'); input.id = `sl-${name}`; input.type = 'range'; input.min = String(min); input.max = String(max); input.step = String(step); input.value = '0';
+      input.addEventListener('input', () => { val.textContent = Number(input.value).toFixed((step < 1) ? 1 : 0); sendValuesThrottled(); });
+      row.append(top, input); sliders[name] = input; return row;
+    }
 
-  const label = document.createElement('label');
-  label.textContent = name;
-  label.setAttribute('for', `sl-${name}`);
+    EMOTIONS.forEach(n => emotionGrid.appendChild(makeRow(n, 0, 5, 0.1)));
+    REGIONS.forEach(n => regionGrid.appendChild(n === SPINE ? makeRow(n, 0, 100, 1) : makeRow(n, 0, 5, 0.1)));
 
-  const val = document.createElement('div');
-  val.className = 'val';
-  val.textContent = '0.0';
+    // Buttons
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const printBtn = document.getElementById('printBtn');
 
-  top.append(label, val);
-
-  const input = document.createElement('input');
-  input.id = `sl-${name}`;
-  input.type = 'range';
-  input.min = String(min);
-  input.max = String(max);
-  input.step = String(step);
-  input.value = '0';
-
-  input.addEventListener('input', () => {
-    val.textContent = Number(input.value).toFixed((step < 1) ? 1 : 0);
-    sendValuesThrottled();
-  });
-
-  row.append(top, input);
-  sliders[name] = input;
-  return row;
-}
-
-EMOTIONS.forEach(n => emotionGrid.appendChild( makeRow(n, 0, 5, 0.1) ));
-REGIONS.forEach(n => regionGrid.appendChild( n===SPINE ? makeRow(n, 0, 100, 1) : makeRow(n, 0, 5, 0.1) ));
-
-// Buttons
-const startBtn = document.getElementById('startBtn');
-const stopBtn  = document.getElementById('stopBtn');
-const resetBtn = document.getElementById('resetBtn');
-const printBtn = document.getElementById('printBtn');
-
-startBtn.addEventListener('click', () => {
-  sendAction('start');                       // tracking ON (display)
-  setTrackingState(true);
-});
-stopBtn.addEventListener('click', () => {
-  sendAction('stop');
-  setTrackingState(false);
-});
-resetBtn.addEventListener('click', () => {
-  // zero all sliders locally without re-sending values
-  Object.entries(sliders).forEach(([name, inp]) => {
-    inp.value = 0;
-    const vEl = inp.parentElement.querySelector('.val');
-    if (vEl) vEl.textContent = (name === 'spine') ? '0' : '0.0';
-  });
-
-  setTrackingState(false);   // updates pill + disables print
-  clearFeedback();           // clear meters + skeleton immediately
-  sendAction('reset');       // display runs resetAll() and echoes zeros
-  // (no sendValues() here)
-});
-
-// CONTROL SIDE
-let isAveraging = false;
-let avgTimer = null;
-const AVG_MS = 2500;
-
-printBtn.addEventListener('click', onPrintButton);
-
-function onPrintButton() {
-  if (!isAveraging) {
-    isAveraging = true;
-    printBtn.textContent = 'Averaging… tap to print';
-    safeSend({ type: 'startTracking' });  // optional, if you gate sampling by tracking
-    safeSend({ type: 'beginSession' });   // tell DISPLAY to start averaging
-
-    avgTimer = setTimeout(() => {
-      safeSend({ type: 'print' });        // tell DISPLAY to print avg
-      isAveraging = false;
-      printBtn.textContent = 'Print Avg';
-    }, AVG_MS);
-  } else {
-    if (avgTimer) clearTimeout(avgTimer);
-    safeSend({ type: 'print' });
-    isAveraging = false;
-    printBtn.textContent = 'Print Avg';
-  }
-}
-
-
-
-
-// Orientation segmented buttons
-const seg = document.querySelectorAll('.seg > button');
-seg.forEach(btn => btn.addEventListener('click', () => {
-  seg.forEach(b => b.classList.remove('is-active'));
-  btn.classList.add('is-active');
-  sendOrientation(btn.dataset.orient);
-}));
-
-function setTrackingState(on){
-  setPill(trkPill, `Tracking: ${on? 'ON':'OFF'}`, on ? 'ok' : '');
-  if (printBtn) printBtn.disabled = !on;  // enable Print only while tracking
-  if (!on) clearFeedback();
-}
-
-// =============================
-// Messaging
-// =============================
-function safeSend(obj){ if (socket && socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify(obj)); } }
-
-function collectValues(){
-  const emotion = {}; const region = {};
-  EMOTIONS.forEach(n => emotion[n] = Number(sliders[n].value));
-  REGIONS.forEach( n => region[n]  = Number(sliders[n].value));
-  return { emotion, region };
-}
-function sendValues(){ safeSend({ type:'sliders', ...collectValues() }); setPill(echoPill, 'Echo: sent', ''); }
-function sendValuesThrottled(){ if (sendTimer) return; sendTimer = setTimeout(() => { sendTimer=null; sendValues(); }, 60); }
-function sendAction(action){ safeSend({ type:'action', action }); }
-function sendOrientation(value){ safeSend({ type:'orientation', value }); }
-
-// =============================
-// Live metrics (from Display)
-// =============================
-const METRIC_KEYS = [
-  ['movementVelocity', 0, 1],
-  ['fastVel',          0, 1],
-  ['structure',        0, 1],
-  ['balance',          0, 1],
-  ['postureLean',      0, 1],
-  ['avgY',             0, 1]
-];
-
-
-let latestPose = null;
-const EDGES = [
-  ['leftShoulder','rightShoulder'],
-  ['leftHip','rightHip'],
-  ['leftShoulder','leftHip'],
-  ['rightShoulder','rightHip'],
-  ['leftShoulder','leftElbow'], ['leftElbow','leftWrist'],
-  ['rightShoulder','rightElbow'], ['rightElbow','rightWrist'],
-  ['leftHip','leftKnee'], ['leftKnee','leftAnkle'],
-  ['rightHip','rightKnee'], ['rightKnee','rightAnkle'],
-  ['leftShoulder','nose'], ['rightShoulder','nose'],
-];
-
-const metricsEl = document.getElementById('metrics');
-const meters = new Map();
-
-function mkMetric(name, min, max){
-  const el = document.createElement('div'); el.className='metric';
-  const h  = document.createElement('h4'); h.textContent = name;
-  const bar= document.createElement('div'); bar.className='bar';
-  const fill=document.createElement('i'); bar.appendChild(fill);
-  const mval=document.createElement('div'); mval.className='mval'; mval.textContent='—';
-  el.append(h, bar, mval);
-  metricsEl.appendChild(el);
-  meters.set(name, { fill, mval, min, max });
-}
-
-METRIC_KEYS.forEach(([k, lo, hi]) => mkMetric(k, lo, hi));
-
-function updateMetrics(obj){
-  let any=false;
-  METRIC_KEYS.forEach(([k, lo, hi]) => {
-    if (typeof obj[k] !== 'number') return;
-    any=true; const val = obj[k];
-    const m = meters.get(k);
-    const pct = Math.max(0, Math.min(1, (val - m.min) / (m.max - m.min)));
-    m.fill.style.width = `${Math.round(pct*100)}%`;
-    m.mval.textContent = String(val.toFixed(2));
-  });
-  if (any) setPill(echoPill, 'Echo: live', 'ok');
-}
-
-function drawSkeleton(){
-  const cvs = document.getElementById('skelCanvas');
-  if (!cvs || !latestPose?.keypoints) return;
-
-  const rect = cvs.getBoundingClientRect();
-  if (cvs.width  !== Math.floor(rect.width) || cvs.height !== Math.floor(rect.height)) {
-    cvs.width  = Math.floor(rect.width);
-    cvs.height = Math.floor(rect.height);
-  }
-
-  const ctx = cvs.getContext('2d');
-  const W = cvs.width, H = cvs.height;
-
-  ctx.clearRect(0, 0, W, H);
-
-  const pts = new Map();
-  latestPose.keypoints.forEach(([part, nx, ny, s]) => {
-    pts.set(part, { x: nx * W, y: ny * H, s });
-  });
-
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = 'rgba(160,190,255,0.9)';
-  ctx.beginPath();
-  EDGES.forEach(([a,b]) => {
-    const pa = pts.get(a), pb = pts.get(b);
-    if (!pa || !pb) return;
-    if ((pa.s ?? 0) < 0.2 && (pb.s ?? 0) < 0.2) return;
-    ctx.moveTo(pa.x, pa.y);
-    ctx.lineTo(pb.x, pb.y);
-  });
-  ctx.stroke();
-
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  pts.forEach(p => {
-    if ((p.s ?? 0) < 0.15) return;
-    const r = 3 + 2 * Math.max(0, Math.min(1, p.s));
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, r, 0, Math.PI*2);
-    ctx.fill();
-  });
-}
-
-function clearFeedback(){
-  meters.forEach(m => {
-    m.fill.style.width = '0%';
-    m.mval.textContent = '—';
-  });
-
-  latestPose = null;
-  const cvs = document.getElementById('skelCanvas');
-  if (cvs) {
-    const ctx = cvs.getContext('2d', { willReadFrequently: true });
-    if (ctx) ctx.clearRect(0, 0, cvs.width, cvs.height);
-  }
-}
-
-let __applyingEcho = false;
-
-function applyEcho(msg){
-  try {
-    __applyingEcho = true;
-    if (msg.emotion) Object.entries(msg.emotion).forEach(([k,v]) => {
-      if (sliders[k]) {
-        sliders[k].value = v;
-        const vEl = sliders[k].parentElement.querySelector('.val');
-        if (vEl) vEl.textContent = Number(v).toFixed(1);
-      }
+    startBtn.addEventListener('click', () => { sendAction('start'); setTrackingState(true); });
+    stopBtn.addEventListener('click', () => { sendAction('stop'); setTrackingState(false); });
+    resetBtn.addEventListener('click', () => {
+      Object.entries(sliders).forEach(([name, inp]) => {
+        inp.value = 0; const vEl = inp.parentElement.querySelector('.val');
+        if (vEl) vEl.textContent = (name === 'spine') ? '0' : '0.0';
+      });
+      setTrackingState(false); clearFeedback(); sendAction('reset');
     });
-    if (msg.region)  Object.entries(msg.region).forEach(([k,v]) => {
-      if (sliders[k]) {
-        sliders[k].value = v;
-        const vEl = sliders[k].parentElement.querySelector('.val');
-        if (vEl) vEl.textContent = (k === 'spine') ? String(v|0) : Number(v).toFixed(1);
+
+    // Averaging / Print
+    let isAveraging = false; let avgTimer = null; const AVG_MS = 2500;
+    printBtn.addEventListener('click', onPrintButton);
+    function onPrintButton() {
+      if (!isAveraging) {
+        isAveraging = true; printBtn.textContent = 'Averaging… tap to print';
+        safeSend({ type: 'startTracking' }); safeSend({ type: 'beginSession' });
+        avgTimer = setTimeout(() => { safeSend({ type: 'print' }); isAveraging = false; printBtn.textContent = 'Print Avg'; }, AVG_MS);
+      } else {
+        if (avgTimer) clearTimeout(avgTimer);
+        safeSend({ type: 'print' }); isAveraging = false; printBtn.textContent = 'Print Avg';
       }
-    });
-  } finally {
-    __applyingEcho = false;
-  }
-  setPill(echoPill, 'Echo: synced', 'ok');
-}
+    }
 
-// throttle sender: bail if echoing
-function sendValuesThrottled(){
-  if (__applyingEcho) return;     // 🔒 avoid ping-pong
-  if (sendTimer) return;
-  sendTimer = setTimeout(() => { sendTimer=null; sendValues(); }, 60);
-}
+    // Orientation segmented buttons (if present)
+    const seg = document.querySelectorAll('.seg > button');
+    seg.forEach(btn => btn.addEventListener('click', () => {
+      seg.forEach(b => b.classList.remove('is-active')); btn.classList.add('is-active'); sendOrientation(btn.dataset.orient);
+    }));
 
-</script>
+    function setTrackingState(on) { setPill(trkPill, `Tracking: ${on ? 'ON' : 'OFF'}`, on ? 'ok' : ''); if (printBtn) printBtn.disabled = !on; if (!on) clearFeedback(); }
+
+    // =============================
+    // Messaging
+    // =============================
+    function safeSend(obj) { if (socket && socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify(obj)); } }
+    function collectValues() { const emotion = {}, region = {}; EMOTIONS.forEach(n => emotion[n] = Number(sliders[n].value)); REGIONS.forEach(n => region[n] = Number(sliders[n].value)); return { emotion, region }; }
+    function sendValues() { safeSend({ type: 'sliders', ...collectValues() }); setPill(echoPill, 'Echo: sent', ''); }
+    function sendValuesThrottled() { if (__applyingEcho) return; if (sendTimer) return; sendTimer = setTimeout(() => { sendTimer = null; sendValues(); }, 60); }
+    function sendAction(action) { safeSend({ type: 'action', action }); }
+    function sendOrientation(value) { safeSend({ type: 'orientation', value }); }
+
+    // =============================
+    // Live metrics (from Display)
+    // =============================
+    const METRIC_KEYS = [['movementVelocity', 0, 1], ['fastVel', 0, 1], ['structure', 0, 1], ['balance', 0, 1], ['postureLean', 0, 1], ['avgY', 0, 1]];
+    let latestPose = null;
+    const EDGES = [['leftShoulder', 'rightShoulder'], ['leftHip', 'rightHip'], ['leftShoulder', 'leftHip'], ['rightShoulder', 'rightHip'], ['leftShoulder', 'leftElbow'], ['leftElbow', 'leftWrist'], ['rightShoulder', 'rightElbow'], ['rightElbow', 'rightWrist'], ['leftHip', 'leftKnee'], ['leftKnee', 'leftAnkle'], ['rightHip', 'rightKnee'], ['rightKnee', 'rightAnkle'], ['leftShoulder', 'nose'], ['rightShoulder', 'nose']];
+    const metricsEl = document.getElementById('metrics'); const meters = new Map();
+
+    function mkMetric(name, min, max) {
+      const el = document.createElement('div'); el.className = 'metric';
+      const h = document.createElement('h4'); h.textContent = name;
+      const bar = document.createElement('div'); bar.className = 'bar';
+      const fill = document.createElement('i'); bar.appendChild(fill);
+      const mval = document.createElement('div'); mval.className = 'mval'; mval.textContent = '—';
+      el.append(h, bar, mval); metricsEl.appendChild(el); meters.set(name, { fill, mval, min, max });
+    }
+    METRIC_KEYS.forEach(([k, lo, hi]) => mkMetric(k, lo, hi));
+
+    function updateMetrics(obj) {
+      let any = false;
+      METRIC_KEYS.forEach(([k, lo, hi]) => {
+        if (typeof obj[k] !== 'number') return;
+        any = true; const val = obj[k]; const m = meters.get(k);
+        const pct = Math.max(0, Math.min(1, (val - m.min) / (m.max - m.min)));
+        m.fill.style.width = `${Math.round(pct * 100)}%`; m.mval.textContent = String(val.toFixed(2));
+      });
+      if (any) setPill(echoPill, 'Echo: live', 'ok');
+    }
+
+    function drawSkeleton() {
+      const cvs = document.getElementById('skelCanvas'); if (!cvs || !latestPose?.keypoints) return;
+      const rect = cvs.getBoundingClientRect();
+      if (cvs.width !== Math.floor(rect.width) || cvs.height !== Math.floor(rect.height)) { cvs.width = Math.floor(rect.width); cvs.height = Math.floor(rect.height); }
+      const ctx = cvs.getContext('2d'); const W = cvs.width, H = cvs.height;
+      ctx.clearRect(0, 0, W, H);
+      const pts = new Map();
+      latestPose.keypoints.forEach(([part, nx, ny, s]) => { pts.set(part, { x: nx * W, y: ny * H, s }); });
+      ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(160,190,255,0.9)'; ctx.beginPath();
+      EDGES.forEach(([a, b]) => { const pa = pts.get(a), pb = pts.get(b); if (!pa || !pb) return; if ((pa.s ?? 0) < 0.2 && (pb.s ?? 0) < 0.2) return; ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); });
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      pts.forEach(p => { if ((p.s ?? 0) < 0.15) return; const r = 3 + 2 * Math.max(0, Math.min(1, p.s)); ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill(); });
+    }
+
+    function clearFeedback() {
+      meters.forEach(m => { m.fill.style.width = '0%'; m.mval.textContent = '—'; });
+      latestPose = null;
+      const cvs = document.getElementById('skelCanvas'); if (cvs) { const ctx = cvs.getContext('2d', { willReadFrequently: true }); if (ctx) ctx.clearRect(0, 0, cvs.width, cvs.height); }
+    }
+
+    let __applyingEcho = false;
+    function applyEcho(msg) {
+      try {
+        __applyingEcho = true;
+        if (msg.emotion) Object.entries(msg.emotion).forEach(([k, v]) => { if (sliders[k]) { sliders[k].value = v; const vEl = sliders[k].parentElement.querySelector('.val'); if (vEl) vEl.textContent = Number(v).toFixed(1); } });
+        if (msg.region) Object.entries(msg.region).forEach(([k, v]) => { if (sliders[k]) { sliders[k].value = v; const vEl = sliders[k].parentElement.querySelector('.val'); if (vEl) vEl.textContent = (k === 'spine') ? String(v | 0) : Number(v).toFixed(1); } });
+      } finally { __applyingEcho = false; }
+      setPill(echoPill, 'Echo: synced', 'ok');
+    }
+
+    // throttle sender: bail if echoing
+    function sendValuesThrottled() { if (__applyingEcho) return; if (sendTimer) return; sendTimer = setTimeout(() => { sendTimer = null; sendValues(); }, 60); }
+  </script>
 </body>
+
 </html>
