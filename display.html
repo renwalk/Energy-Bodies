@@ -128,19 +128,12 @@
           return;
         }
 
-        // Explicit beginSession from Control (deferred-safe)
-        if (type === 'beginSession') {
-          console.log('[DISPLAY] beginSession (deferred if needed)');
-          callWhen('beginSession');
-          return;
-        }
 
         // Compact "action" API (start/stop/reset)
         if (type === 'action') {
           if (payload.action === 'start') {
             console.log('[DISPLAY] action:start');
             callWhen('startTracking');
-            callWhen('beginSession');
             EnergyBodiesDisplay.tracking(true);
             return;
           }
@@ -169,12 +162,14 @@
           return;
         }
 
-        // Print (avg-first with snapshot fallback; deferred-safe)
+        // Print → direct snapshot card
         if (type === 'print') {
-          console.log('[DISPLAY] print (avg-first, deferred if needed)');
-          if (typeof window.onPrint === 'function') { window.onPrint(); return; }
-          if (typeof window.onPrintClick === 'function') { window.onPrintClick(); return; }
-          callWhen('onPrint');
+          console.log('[DISPLAY] print → direct onPrintClick');
+          if (typeof window.onPrintClick === 'function') {
+            window.onPrintClick();
+          } else {
+            console.warn('[DISPLAY] onPrintClick not found');
+          }
           return;
         }
       }
@@ -184,6 +179,177 @@
     })();
   </script>
 
+  <script>
+    // Snapshot → 4×6 print with full-bleed image + Gimlet footer
+    window.onPrintClick = function () {
+      console.log('[DISPLAY] Snapshot print with footer');
+
+      let imgDataUrl = null;
+
+      // 1) Capture the current frame from the canvas
+      try {
+        if (typeof window.captureOnWhiteForPrint === 'function') {
+          // use your helper if present
+          imgDataUrl = window.captureOnWhiteForPrint(2); // scale factor
+        } else {
+          const canvas = document.querySelector('canvas');
+          if (!canvas) {
+            console.error('[DISPLAY] No canvas found for printing');
+            return;
+          }
+          imgDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        }
+      } catch (err) {
+        console.error('[DISPLAY] Error capturing canvas for print:', err);
+        return;
+      }
+
+      // 2) Simple metadata for footer
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+      const timeStr = now.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+
+      // 3) Hidden iframe so there’s no big popup window
+      let iframe = document.getElementById('eb-print-frame');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'eb-print-frame';
+        iframe.style.position = 'fixed';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.style.opacity = '0';
+        iframe.style.pointerEvents = 'none';
+        document.body.appendChild(iframe);
+      }
+
+      const printWindow = iframe.contentWindow;
+      const doc = printWindow.document;
+
+      // 4) 4×6 layout with full-bleed image + footer using Gimlet
+      doc.open();
+      doc.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>Energy Bodies Print</title>
+      <style>
+        /* Gimlet fonts (same files as control, relative to display.html) */
+        @font-face {
+          font-family: "Gimlet Sans Micro";
+          src: url("./fonts/GimletSansMicro-Light.otf") format("opentype");
+          font-weight: 300;
+          font-style: normal;
+          font-display: swap;
+        }
+        @font-face {
+          font-family: "Gimlet Sans Display";
+          src: url("./fonts/GimletSansDisplay-Light.otf") format("opentype");
+          font-weight: 300;
+          font-style: normal;
+          font-display: swap;
+        }
+        @font-face {
+          font-family: "Gimlet Sans Text";
+          src: url("./fonts/GimletSansText-Light.otf") format("opentype");
+          font-weight: 300;
+          font-style: normal;
+          font-display: swap;
+        }
+
+        @page {
+          size: 4in 6in;
+          margin: 0;
+        }
+        html, body {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          height: 100%;
+          background: #ffffff;
+        }
+        body {
+          display: flex;
+          align-items: stretch;
+          justify-content: stretch;
+          font-family: "Gimlet Sans Micro", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        }
+        .wrapper {
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+          height: 100%;
+        }
+        .image-wrap {
+          flex: 1 1 auto;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        .image-wrap img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover; /* near full-bleed on all sides */
+        }
+        .meta {
+          flex: 0 0 auto;
+          padding: 6px 10px 8px;
+          font-size: 9px;
+          line-height: 1.3;
+          color: #111;
+          border-top: 0.5px solid #e0e0e0;
+        }
+        .meta-title {
+          font-family: "Gimlet Sans Display", "Gimlet Sans Text", system-ui, sans-serif;
+          font-weight: 300;
+          font-size: 10px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          margin-bottom: 2px;
+        }
+        .meta-line {
+          font-family: "Gimlet Sans Micro", "Gimlet Sans Text", system-ui, sans-serif;
+          opacity: 0.85;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="wrapper">
+        <div class="image-wrap">
+          <img id="toPrint" src="${imgDataUrl}" />
+        </div>
+        <div class="meta">
+          <div class="meta-title">Energy Bodies</div>
+          <div class="meta-line">MIT Media Lab · Info+ 2025</div>
+          <div class="meta-line">${dateStr} · ${timeStr} · Session Snapshot</div>
+        </div>
+      </div>
+      <script>
+        const img = document.getElementById('toPrint');
+        img.onload = function () {
+          window.focus();
+          window.print();
+          window.onafterprint = () => {
+            // optional: clear content after printing
+            document.body.innerHTML = '';
+          };
+        };
+      <\/script>
+    </body>
+    </html>
+  `);
+      doc.close();
+    };
+  </script>
   <!-- Your renderer LAST so it can see EnergyBodiesDisplay -->
   <script defer src="./sketch.js"></script>
 </body>

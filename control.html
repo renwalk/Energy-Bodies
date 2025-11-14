@@ -817,19 +817,10 @@
       setTrackingState(false); clearFeedback(); sendAction('reset');
     });
 
-    // Averaging / Print
-    let isAveraging = false; let avgTimer = null; const AVG_MS = 2500;
-    printBtn.addEventListener('click', onPrintButton);
-    function onPrintButton() {
-      if (!isAveraging) {
-        isAveraging = true; printBtn.textContent = 'Averaging… tap to print';
-        safeSend({ type: 'startTracking' }); safeSend({ type: 'beginSession' });
-        avgTimer = setTimeout(() => { safeSend({ type: 'print' }); isAveraging = false; printBtn.textContent = 'Print Avg'; }, AVG_MS);
-      } else {
-        if (avgTimer) clearTimeout(avgTimer);
-        safeSend({ type: 'print' }); isAveraging = false; printBtn.textContent = 'Print Avg';
-      }
-    }
+    // Simple Print – no averaging, no label changes
+    printBtn.addEventListener('click', () => {
+      safeSend({ type: 'print' });
+    });
 
     // Orientation segmented buttons (if present)
     const seg = document.querySelectorAll('.seg > button');
