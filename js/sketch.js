@@ -326,13 +326,14 @@ function setup() {
   };
 
   // Setup video
+
   const constraints = {
+    audio: false,
     video: {
-      facingMode: 'user',
-      width: { ideal: 640 },
-      height: { ideal: 480 }
-    },
-    audio: false
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      facingMode: 'user'
+    }
   };
 
   video = createCapture(constraints, () => {
@@ -347,6 +348,7 @@ function setup() {
     console.log('🧠 PoseNet model loaded');
   });
 
+  // 🔹 Pose callback stays INSIDE the same function
   poseNet.on('pose', results => {
     if (!trackingStarted) return;
     poses = results;
@@ -368,7 +370,7 @@ function setup() {
     }
   });
 
-  // Listen for orientation changes
+  // 🔹 Orientation listener also inside
   window.addEventListener('eb:orientation', (ev) => {
     const mode = ev.detail?.value;
     if (mode && mode !== displayOrientation) {
@@ -377,9 +379,11 @@ function setup() {
     }
   });
 
+  // 🔹 Expose hooks on window inside here too
   window.applySliders = applySliders;
   window.resetAll = resetAll;
-}
+} // ← single, final closing brace for setup()
+
 
 function draw() {
   fill(255);
@@ -483,15 +487,19 @@ function startTrackingImpl() {
 function stopTrackingImpl() {
   if (!trackingStarted) return;
 
-    // Generate enhanced receipt with session data
-    const receiptHTML = generateReceiptHTML(dataURL, avg);
+  trackingStarted = false;
+  window.__ebTrackingStarted = false;
 
-    const w = window.open('', '_blank');
-    w.document.write(receiptHTML);
-    w.document.close();
-    w.onload = () => { w.focus(); w.print(); };
-  });
+  // End the session when tracking stops
+  if (window.__ebSession && window.__ebSession.active) {
+    window.__ebSession.end();
+  }
+
+  if (window.EnergyBodiesDisplay) {
+    EnergyBodiesDisplay.tracking(false);
+  }
 }
+
 
 function generateReceiptHTML(imageDataURL, sessionData) {
   const timestamp = new Date().toLocaleString();
@@ -503,7 +511,7 @@ function generateReceiptHTML(imageDataURL, sessionData) {
 
   // Build emotion rows
   let emotionRows = '';
-  for (const name of (emotionNames||[])) {
+  for (const name of (emotionNames || [])) {
     const val = sessionData.emotions?.[name] ?? 0;
     const barWidth = (val / 5) * 100;
     emotionRows += `
@@ -519,7 +527,7 @@ function generateReceiptHTML(imageDataURL, sessionData) {
 
   // Build region rows
   let regionRows = '';
-  for (let i = 0; i < (regionNames||[]).length; i++) {
+  for (let i = 0; i < (regionNames || []).length; i++) {
     const name = regionNames[i];
     const val = sessionData.regionWidths?.[i] ?? 0;
     const barWidth = (val / 5) * 100;
@@ -752,7 +760,7 @@ function generateReceiptHTML(imageDataURL, sessionData) {
   `;
 }
 
-function onPrintSnapshotFallback(){
+function onPrintSnapshotFallback() {
   const dataURL = captureEnergyBodyHiRes();
   const w = window.open('', '_blank');
   w.document.write(`

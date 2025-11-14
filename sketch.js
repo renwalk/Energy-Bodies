@@ -214,8 +214,21 @@ function setup() {
   let spineVal = 0; regionSliders["spine"] = { value: (v) => { if (v !== undefined) spineVal = v; return spineVal; } };
 
   // Video
-  const constraints = { video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false };
-  video = createCapture(constraints, () => console.log('🎥 webcam ready')); video.size(640, 480); video.elt.playsInline = true; video.hide();
+  const constraints = {
+    audio: false,
+    video: {
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      facingMode: "user"  // front camera on laptops/tablets
+    }
+  };
+
+  video = createCapture(constraints, () => {
+    console.log("[DISPLAY] video ready");
+  });
+  video.size(width, height);
+  video.hide();
+
 
   // PoseNet
   poseNet = ml5.poseNet(video, { detectionType: 'single' }, () => console.log('🧠 PoseNet model loaded'));
