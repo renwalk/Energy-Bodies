@@ -8,6 +8,15 @@
   <title>Energy Bodies—-Control</title>
   <!-- Removed CDN p5 script; not used in this file and blocks offline -->
   <style>
+    /* === Micro Text Font: Gimlet Sans Micro Light === */
+    @font-face {
+      font-family: "Gimlet Sans Micro";
+      src: url("./fonts/GimletSansMicro-Light.otf") format("opentype");
+      font-weight: 300;
+      font-style: normal;
+      font-display: swap;
+    }
+
     /* === Title Font: Gimlet Sans Display Light === */
     @font-face {
       font-family: "Gimlet Sans Display";
@@ -33,6 +42,8 @@
       --font-sans: "Gimlet Sans Text", ui-sans-serif, system-ui, -apple-system, sans-serif;
       /* Title font */
       --font-display: "Gimlet Sans Display", ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --font-micro: "Gimlet Sans Micro", "Gimlet Sans Text", ui-sans-serif, system-ui, -apple-system, sans-serif;
+
       --fs-xs: 12px;
       --fs-sm: 13px;
       --fs-md: 14px;
@@ -104,13 +115,24 @@
     }
 
     .pill {
-      font-family: var(--font-sans);
+      font-family: var(--font-micro);
       font-size: var(--fs-xs);
       font-weight: 300;
       letter-spacing: .02em;
       background: transparent;
       border: 1px solid transparent;
       color: #bbb;
+    }
+
+    /* Use micro font for all very small text elements */
+    .row .val,
+    .mval,
+    .intro-note,
+    .legend-box,
+    .legend-item,
+    .legend-label,
+    .legend-desc {
+      font-family: var(--font-micro);
     }
 
     .ok,
@@ -184,11 +206,14 @@
       padding: 24px 22px;
     }
 
-    #welcomeCard h3 {
+    #welcomeCard h1 {
       font-family: var(--font-display);
-      font-size: 24px;
+      font-weight: 300;
+      font-size: clamp(32px, 7vw, 60px);
+      line-height: 1.1;
       letter-spacing: 0.06em;
       text-transform: uppercase;
+      margin-bottom: 0.5em;
     }
 
     #welcomeCard .intro-tagline {
@@ -624,7 +649,7 @@
   <main class="wrap">
     <!-- Welcome card shown in "welcome" mode -->
     <section id="welcomeCard" class="panel">
-      <h3>Energy Bodies</h3>
+      <h1>Energy Bodies</h1>
       <p class="intro-tagline">
         Energy Bodies is an interactive installation that translates movement and emotional inputs into a living visual
         form.
@@ -649,7 +674,9 @@
         <strong>your emotions</strong>—are you calm, anxious, joyful, or something else?
       </p>
       <p> Use the sliders to reflect what you feel: left for little or no sensation/emotion, right for strong or
-        intense internal feelings. Press <strong>Start </strong> to move within the frame—your gestures become streams
+        intense internal feelings. Press</p>
+
+      <p><strong>Start </strong> to move within the frame—your gestures become streams
         of color and
         line. Press <strong>Print</strong> to take home your image of embodied energy.
       </p>
@@ -657,7 +684,7 @@
 
     <!-- These panels are hidden until Begin Session is tapped -->
     <section id="regions" class="panel is-hidden">
-      <h3>Region Inputs</h3>
+      <h3>Body Inputs</h3>
       <div id="regionGrid" class="grid"></div>
     </section>
 
