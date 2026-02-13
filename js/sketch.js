@@ -545,6 +545,27 @@ function generateReceiptHTML(imageDataURL, sessionData) {
             font-size: 9px;
             opacity: 0.6;
           }
+          .data-table th {
+            background: #222;
+            padding: 6px 4px;
+            font-size: 10px;
+            font-weight: bold;
+            text-align: left;
+            border-top: 1px solid #666;
+            border-bottom: 1px solid #666;
+          }
+          .data-table td {
+            padding: 4px 4px;
+            font-size: 9px;
+          }
+          .data-table td:first-child {
+            width: 70%;
+          }
+          .data-table td:last-child {
+            width: 30%;
+            text-align: right;
+            font-weight: bold;
+          }
           @page {
             size: 4in 6in;
             margin: 0;
@@ -619,6 +640,101 @@ function generateReceiptHTML(imageDataURL, sessionData) {
             <div class="section-title">Region Activity</div>
             <table>
               ${regionRows}
+            </table>
+          </div>
+
+          <!-- Detailed Data Table -->
+          <div class="section">
+            <div class="section-title">Complete Session Data</div>
+            <table class="data-table">
+              <tr>
+                <th colspan="2">CORE METRICS</th>
+              </tr>
+              <tr>
+                <td>Structure (raw)</td>
+                <td>${fmt(sessionData.structure)}</td>
+              </tr>
+              <tr>
+                <td>Balance (raw)</td>
+                <td>${fmt(sessionData.balance)}</td>
+              </tr>
+              <tr>
+                <td>Posture (raw)</td>
+                <td>${fmt(sessionData.posture)}</td>
+              </tr>
+              <tr>
+                <td>Velocity (raw)</td>
+                <td>${fmt(sessionData.velocity)}</td>
+              </tr>
+              <tr>
+                <th colspan="2">EMOTIONS (0-5 SCALE)</th>
+              </tr>
+              <tr>
+                <td>Anxiety</td>
+                <td>${fmt(sessionData.emotions?.anxiety ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Sadness</td>
+                <td>${fmt(sessionData.emotions?.sadness ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Joy</td>
+                <td>${fmt(sessionData.emotions?.joy ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Anger</td>
+                <td>${fmt(sessionData.emotions?.anger ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Fear</td>
+                <td>${fmt(sessionData.emotions?.fear ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Calm</td>
+                <td>${fmt(sessionData.emotions?.calm ?? 0)}</td>
+              </tr>
+              <tr>
+                <th colspan="2">BODY REGIONS (0-5 SCALE)</th>
+              </tr>
+              <tr>
+                <td>Head</td>
+                <td>${fmt(sessionData.regionWidths?.[0] ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Neck</td>
+                <td>${fmt(sessionData.regionWidths?.[1] ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Chest</td>
+                <td>${fmt(sessionData.regionWidths?.[2] ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Arms & Hands</td>
+                <td>${fmt(sessionData.regionWidths?.[3] ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Abdomen</td>
+                <td>${fmt(sessionData.regionWidths?.[4] ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Legs & Feet</td>
+                <td>${fmt(sessionData.regionWidths?.[5] ?? 0)}</td>
+              </tr>
+              <tr>
+                <th colspan="2">SEGMENT PROFILE</th>
+              </tr>
+              <tr>
+                <td>Segment 0</td>
+                <td>${fmt(sessionData.segmentProfile?.[0] ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Segment 1</td>
+                <td>${fmt(sessionData.segmentProfile?.[1] ?? 0)}</td>
+              </tr>
+              <tr>
+                <td>Segment 2</td>
+                <td>${fmt(sessionData.segmentProfile?.[2] ?? 0)}</td>
+              </tr>
             </table>
           </div>
 
