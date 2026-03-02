@@ -131,7 +131,7 @@ const regionKeypoints = {
 const UI_WIDTH = 320, CANVAS_PADDING = 20; let K = 1;
 let regionMaxWidths = { head: 60, neck: 20, chest: 50, armsHands: 150, abdomen: 80, legsFeet: 100, spine: 100 };
 
-// --- PRINT: consolidated helpers ---------------------------------------ƒ
+// --- PRINT: capture helpers (printing handled in display.html) -----------
 function captureEnergyBodyHiRes() {
   const src = (typeof scene !== "undefined" && scene) ? scene : window._renderer || null; // p5 canvas
   const srcCanvas = src?.elt || document.querySelector("canvas");
@@ -149,50 +149,22 @@ function captureEnergyBodyHiRes() {
 function captureOnWhiteForPrint(scale = 2) {
   const src = (scene?.elt) || document.querySelector("canvas");
   const off = document.createElement("canvas");
-  off.width = src.width * scale; off.height = src.height * scale;
+  off.width = src.width * scale;
+  off.height = src.height * scale;
   const ctx = off.getContext("2d");
-  // ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, off.width, off.height);
+  // If you ever want a pure white background, uncomment the next two lines:
+  // ctx.fillStyle = "#fff";
+  // ctx.fillRect(0, 0, off.width, off.height);
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(src, 0, 0, off.width, off.height);
   return off.toDataURL("image/jpeg", 0.92);
 }
 
-function printReceiptKiosk(dataURL, meta = "") {
-  const w = window.open("", "_blank", "width=800,height=1200");
-  w.document.write(`
-  <html><head><meta charset="utf-8" />
-  <style>
-    @page { size: 4in 6in; margin: 0; }
-    html, body { height:100%; margin:0; background:#fff; }
-    body { display:flex; }
-    .frame { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
-    img { width:100%; height:100%; object-fit: contain; display:block; }
-    .meta { position:absolute; bottom:0.1in; left:0; right:0; text-align:center; font-size:8pt; white-space:pre; }
-  </style>
-  </head><body>
-    <div class="frame">
-      <img src="${dataURL}" />
-      <div class="meta">Energy Bodies — ${new Date().toLocaleString()}${meta ? "\n" + meta : ""}</div>
-    </div>
-    <script>onload=()=>{print(); setTimeout(()=>close(), 400);}<\/script>
-  </body></html>`);
-  w.document.close();
-}
-
-function onPrintClick() {
-  const img = captureOnWhiteForPrint(2);
-  printReceiptKiosk(img, "MIT Info+ • Energy Bodies");
-}
-
-// function addPrintButton() {
-//   if (window.__printBtn) return;
-//   const btn = document.createElement("button");
-//   btn.textContent = "Print Energy Body";
-//   btn.style.cssText = "position:fixed;bottom:16px;right:16px;padding:10px 14px;font-size:14px;z-index:99999;cursor:pointer;";
-//   btn.addEventListener("click", onPrintClick);
-//   document.body.appendChild(btn);
-//   window.__printBtn = btn;
-// }
+// NOTE:
+//  • The *actual* printing logic (window.onPrintClick + footer layout)
+//    now lives in display.html.
+//  • display.html calls window.captureOnWhiteForPrint(...) from here
+//    so we only keep the capture helpers in this file.
 
 // --- SETUP --------------------------------------------------------------
 function setup() {
